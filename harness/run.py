@@ -38,30 +38,39 @@ async def call_once(
     task: Task,
     temperature: float,
     max_tokens: int,
+    reasoning_effort: str = "",
 ) -> Sample:
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": task.prompt}],
         "temperature": temperature,
-        "max_tokens": max_tokens,
     }
+    if reasoning_effort:
+        payload["reasoning"] = {"effort": reasoning_effort}
     started = time.perf_counter()
     last_error: Exception | None = None
     for attempt in range(3):
         try:
+            payload["max_tokens"] = max_tokens * (2**attempt)
             resp = await client.post(
                 f"{base_url.rstrip('/')}/chat/completions",
                 json=payload,
                 headers={"Authorization": f"Bearer {api_key}"},
             )
             resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"] or ""
-            text, think_chars = strip_think(content)
+            choice = resp.json()["choices"][0]
+            message = choice.get("message") or {}
+            content = message.get("content") or ""
+            reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+            text, inline_chars = strip_think(content)
+            if not text:
+                last_error = RuntimeError(f"空回复，finish_reason={choice.get('finish_reason')}")
+                continue
             return Sample(
                 task_id=task.id,
                 model=model,
                 response=text,
-                think_chars=think_chars,
+                think_chars=len(reasoning) + inline_chars,
                 latency_ms=round((time.perf_counter() - started) * 1000, 1),
             )
         except Exception as exc:  # noqa: BLE001 - 网络重试需要兜底
@@ -140,28 +149,46 @@ async def run_live(args: argparse.Namespace, tasks: dict[str, Task]) -> None:
     semaphore = asyncio.Semaphore(args.concurrency)
     selected = list(tasks.values())[: args.limit] if args.limit else list(tasks.values())
 
-    async with httpx.AsyncClient(timeout=args.timeout) as client:
+    async with httpx.AsyncClient(timeout=args.timeout, trust_env=False) as client:
         async def worker(task: Task) -> Sample:
             async with semaphore:
                 return await call_once(
-                    client, args.base_url, api_key, args.model, task, args.temperature, args.max_tokens
+                    client,
+                    args.base_url,
+                    api_key,
+                    args.model,
+                    task,
+                    args.temperature,
+                    args.max_tokens,
+                    args.reasoning_effort,
                 )
 
         samples = await asyncio.gather(*(worker(t) for t in selected))
     write_jsonl(Path(args.out), list(samples))
 
 
+def safe_name(model: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", model).strip("_")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="TshuBench 调用器")
     parser.add_argument("--tasks", default="tasks/eval_suite_v2.jsonl")
     parser.add_argument("--model", default="deepseek-chat")
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        help="批量模型，可写 model:effort，例如 auto/gpt-6-luna:low",
+    )
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--out", default="runs/model.jsonl")
+    parser.add_argument("--out-dir", default="runs")
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--temperature", type=float, default=0.3)
-    parser.add_argument("--max-tokens", type=int, default=1024)
-    parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--reasoning-effort", default="", help="low/medium/high，留空则不下发")
+    parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--demo", action="store_true", help="生成 tidy/slop 两份合成样本，不调用模型")
     parser.add_argument("--out-prefix", default="runs/demo")
@@ -174,7 +201,15 @@ def main() -> None:
         run_demo(tasks, args.out_prefix)
         return
 
-    asyncio.run(run_live(args, tasks))
+    specs = args.models or [args.model]
+    out_dir = Path(args.out_dir)
+    for spec in specs:
+        model, _, effort = spec.partition(":")
+        args.model = model
+        args.reasoning_effort = effort or args.reasoning_effort
+        args.out = str(out_dir / f"{safe_name(model)}.jsonl")
+        logger.info(f"开始 {model}，思考档位 {args.reasoning_effort or '默认'}")
+        asyncio.run(run_live(args, tasks))
 
 
 if __name__ == "__main__":

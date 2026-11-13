@@ -6,6 +6,8 @@
 - **确定性复现**：同一份回复永远得到同一个分数
 - **题库锚点**：把「结论在哪」「有没有顺从错误前提」这类语义判断，降维成题库里预埋的字符串匹配
 
+完整文档见 [docs/README.md](docs/README.md)。
+
 ## 快速开始
 
 ```bash
@@ -35,7 +37,18 @@ uv run python -m harness.run \
 uv run python -m harness.score --runs runs/deepseek-chat.jsonl --out reports
 ```
 
-推理模型的 `<think>` 块会在入库前剥离，同时记录思考字符数。
+批量跑多个模型，可用 `模型:思考档位` 指定每个模型的最低思考级别：
+
+```bash
+uv run python -m harness.run \
+  --models auto/gpt-6-luna:low auto/gemini-4-argon:medium \
+  --base-url http://127.0.0.1:3425/v1 \
+  --out-dir runs/real --concurrency 6
+
+uv run python -m harness.score --runs runs/real/*.jsonl --out reports
+```
+
+`reasoning_content` 与正文里的 `<think>` 块都会在入库前剥离，思考字符数记入 `think_chars`。接口返回空正文时会自动加倍 `max_tokens` 重试，避免思考吃光预算。
 
 ## 八项指标
 
@@ -82,6 +95,7 @@ harness/score.py            聚合、战报、静态榜单
 harness/run.py              OpenAI 兼容接口采样 + demo 合成数据
 tests/test_metrics.py       八指标正反例
 web/index.html              排行榜页面
+docs/                       立项规范、技术方案、方法论、调研与题库来源
 ```
 
 ## MVP 边界
