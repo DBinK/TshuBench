@@ -1,0 +1,24 @@
+{"task_id": "code_t01", "model": "demo-tidy", "response": "加过期。关键在 过期时间，涉及 CACHE、TTL、lru_cache。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "code_t02", "model": "demo-tidy", "response": "后端没起。关键在 服务没启动，涉及 502、111、Connection refused。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "code_t03", "model": "demo-tidy", "response": "GIL。关键在 全局解释器锁，涉及 GIL、ProcessPoolExecutor、multiprocessing。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "code_t04", "model": "demo-tidy", "response": "联合索引。关键在 复合索引，涉及 status、created_at、联合索引。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "code_t05", "model": "demo-tidy", "response": "布隆过滤器。关键在 Bloom，涉及 布隆过滤器、Bloom、缓存空值。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "code_t06", "model": "demo-tidy", "response": "ijson。关键在 流式，涉及 ijson、json.load、200MB。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "inc_t01", "model": "demo-tidy", "response": "影响。关键在 回滚，涉及 支付回调、5xx、0.1%。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "inc_t02", "model": "demo-tidy", "response": "读流量切回主库。关键在 切主，涉及 主从延迟、300 秒、从库。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "inc_t03", "model": "demo-tidy", "response": "truncate。关键在 被进程占用，涉及 /var/log、truncate、lsof。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "inc_t04", "model": "demo-tidy", "response": "看日志。关键在 退出码，涉及 CrashLoopBackOff、livenessProbe、initialDelaySeconds。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "inc_t05", "model": "demo-tidy", "response": "先回滚。关键在 回滚，涉及 回滚、日志、止血。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "inc_t06", "model": "demo-tidy", "response": "熔断。关键在 超时，涉及 线程池、超时、熔断。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "clr_t01", "model": "demo-tidy", "response": "没用。关键在 不解决，涉及 count(*)、索引、全表扫。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "clr_t02", "model": "demo-tidy", "response": "TZ。关键在 localtime，涉及 TZ=Asia/Shanghai、/etc/localtime、docker run。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "clr_t03", "model": "demo-tidy", "response": "不会消除。关键在 停顿更长，涉及 -Xmx、Full GC、G1。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "clr_t04", "model": "demo-tidy", "response": "1.3 更快。关键在 TLS 1.3 更快，涉及 TLS 1.3、TLS 1.2、0-RTT。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "clr_t05", "model": "demo-tidy", "response": "Fluent Bit。关键在 Filebeat，涉及 Fluent Bit、Filebeat、Sidecar。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "clr_t06", "model": "demo-tidy", "response": "Zustand。关键在 Redux，涉及 Zustand、Redux、5 人。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "rel_t01", "model": "demo-tidy", "response": "Redis 7.2。关键在 重复提交，涉及 Redis 7.2、订单重复提交、CSV 导出。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "rel_t02", "model": "demo-tidy", "response": "docker compose up。关键在 make dev，涉及 docker compose up、make dev、8080。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "rel_t03", "model": "demo-tidy", "response": "具体变更。关键在 用户可感知，涉及 发布说明、用户、变更。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "rel_t04", "model": "demo-tidy", "response": "回滚方案。关键在 必须准备回滚，涉及 灰度、回滚、版本。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "rel_t05", "model": "demo-tidy", "response": "CHANGELOG。关键在 邮件，涉及 CHANGELOG、邮件、50 人。", "think_chars": 0, "latency_ms": 0.0}
+{"task_id": "rel_t06", "model": "demo-tidy", "response": "2.0.0。关键在 1.4.0，涉及 2.0.0、1.4.0、breaking change。", "think_chars": 0, "latency_ms": 0.0}

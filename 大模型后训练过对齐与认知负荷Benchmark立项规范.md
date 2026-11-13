@@ -1,8 +1,8 @@
-# 大模型后训练「过对齐与认知负荷」评测基准（Cognitive Slop Benchmark）立项与需求规范
+# 大模型后训练「过对齐与认知负荷」评测基准（TshuBench · 天书榜）立项与需求规范
 
 > **文档版本**：v2.0.0-requirement
 > **制定日期**：2026-11-13
-> **项目代号**：`Anti-Overalignment-Bench` / `CognitiveSlop`
+> **项目代号**：`TshuBench` / `天书榜`
 > **核心定位**：面向大语言模型（Large Language Model, LLM）后训练过对齐（Post-training Over-alignment）引发的「句法认知偏离、信息密度稀释、欧化意合断裂、推理空转与社交骑墙」的客观量化评测体系。
 
 ---
@@ -30,7 +30,7 @@
 
 ## 二、评测定位与差异化矩阵
 
-| 评测类别 | 代表项目 | 核心关切 | 评测手段 | 本基准（Cognitive Slop）的差异化定位 |
+| 评测类别 | 代表项目 | 核心关切 | 评测手段 | 本基准（TshuBench）的差异化定位 |
 | :--- | :--- | :--- | :--- | :--- |
 | **任务正确性基准** | SWE-bench, HumanEval, MMLU | 题目能否做对 | 单元测试 Pass@1、选项匹配 | 在保证结论正确的前提下，量化**人机交流的认知折损** |
 | **主观偏好排行榜** | AlpacaEval, MT-Bench, Chatbot Arena | 裁判模型或众包投票者偏爱哪条 | LLM-as-a-Judge 成对比较 | 彻底剥离裁判模型的长度与 Markdown 偏见，直接惩罚冗余包装 |
@@ -45,7 +45,7 @@
 
 ```mermaid
 graph TD
-    Root["Cognitive Slop 综合指数"] --> L1["1. 句法与工作记忆层"]
+    Root["TshuScore 天书指数"] --> L1["1. 句法与工作记忆层"]
     Root --> L2["2. 汉语句法欧化与意合层"]
     Root --> L3["3. 信息密度与熵分布层"]
     Root --> L4["4. 结论效率与范围纪律层"]
@@ -212,13 +212,13 @@ graph TD
 - **职场即时沟通基线**：LCCC（Large-scale Cleaned Chinese Conversation）与 NaturalConv 对话语料库。
 - **书面论述与公告基线**：人民日报原生中文新闻语料（对标 arXiv:2506.22050 的 OCN 基线）与 2022 年前高赞技术专栏。
 
-### 5.2 综合过对齐惩罚分（Cognitive Slop Score, CSS）
+### 5.2 综合过对齐惩罚分（TshuScore, TS）
 - **单向惩罚型指标**（`M3 名物化`、`M6 首结论延迟`、`M7 超额范围`、`M8 推理空转`、`M9 语言抽动`、`M10 社交奉承与骑墙`）：人类理想值为 $0$，按命中率与篇幅占比经带截断的对数饱和函数映射至 $[0, 100]$。
 - **双向分布锚定型指标**（`M1 句法偏离度`、`M2 意合断裂度`、`M5 惊奇度均匀过载`）：以 Pre-ChatGPT 人类语料的中位数 $P_{50}$ 为零惩罚中心，四分位距 $\text{IQR} = P_{75} - P_{25}$ 为容忍带宽，超出带宽的偏离量映射至 $[0, 100]$。
 - **有效密度奖励反转指标**（`M4 有效信息密度 EID`）：将密度值对照人类基准分位数反向映射为稀释惩罚分 $S_{\text{EID}} \in [0, 100]$。
 
-最终模型的 **Cognitive Slop Score（CSS，分数越低越说人话，$0$ 分为人类专家基准）** 按六层加权合成：
-$$\text{CSS} = 0.15 S_{\text{M1}} + 0.15 \left(\frac{S_{\text{M2}} + S_{\text{M3}}}{2}\right) + 0.15 \left(\frac{S_{\text{M4}} + S_{\text{M5}}}{2}\right) + 0.20 \left(\frac{S_{\text{M6}} + S_{\text{M7}}}{2}\right) + 0.15 \left(\frac{S_{\text{M8}} + S_{\text{M9}}}{2}\right) + 0.20 S_{\text{M10}}$$
+最终模型的 **TshuScore（TS，分数越低越说人话，$0$ 分为人类专家基准）** 按六层加权合成：
+$$\text{TS} = 0.15 S_{\text{M1}} + 0.15 \left(\frac{S_{\text{M2}} + S_{\text{M3}}}{2}\right) + 0.15 \left(\frac{S_{\text{M4}} + S_{\text{M5}}}{2}\right) + 0.20 \left(\frac{S_{\text{M6}} + S_{\text{M7}}}{2}\right) + 0.15 \left(\frac{S_{\text{M8}} + S_{\text{M9}}}{2}\right) + 0.20 S_{\text{M10}}$$
 
 ---
 
@@ -233,7 +233,7 @@ $$\text{CSS} = 0.15 S_{\text{M1}} + 0.15 \left(\frac{S_{\text{M2}} + S_{\text{M3
 | `harness/run.py` | 并发调用待测模型 API，支持剥离或单独记录推理模型的 `<think>` 块，输出标准化 `runs/<model>.jsonl` |
 | `harness/parser.py` | 轻量级中文分句、词性标注、依存距离计算、形式动词名物化识别与首结论偏移定位流水线 |
 | `harness/score.py` | 十维指标计算、双分位数归一化、Bootstrap 置信区间估计与雷达图战报生成器 |
-| `web/` | 静态排行榜前端，支持按总分（CSS）及六大子维度对比主流模型，并提供单题病灶高亮检视 |
+| `web/` | 静态排行榜前端，支持按总分（TS）及六大子维度对比主流模型，并提供单题病灶高亮检视 |
 
 ### 标准执行命令
 ```bash

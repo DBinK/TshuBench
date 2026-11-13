@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TshuBench · 天书榜</title>
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--line:#21262d;--hot:#f85149;--cool:#3fb950}
+*{box-sizing:border-box}
+body{margin:0;padding:48px 24px;background:var(--bg);color:var(--fg);
+font:14px/1.6 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif}
+main{max-width:1080px;margin:0 auto}
+h1{font-size:28px;margin:0 0 6px}
+p.sub{color:var(--muted);margin:0 0 28px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:12px}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+td.rank{color:var(--muted)}
+td.model{font-weight:600}
+td.score{position:relative;min-width:150px}
+td.score .bar{position:absolute;left:0;top:50%;height:6px;transform:translateY(-50%);
+background:linear-gradient(90deg,var(--cool),var(--hot));opacity:.35;border-radius:3px}
+td.score b{position:relative}
+footer{color:var(--muted);margin-top:28px;font-size:12px}
+</style>
+<main>
+<h1>TshuBench · 天书榜</h1>
+<p class=sub>量化后训练过对齐导致的可读性退化。分数越低越说人话，0 分对齐人类专家基线。</p>
+<table>
+<thead><tr><th>#</th><th>模型</th><th>TshuScore</th><th>ADR 首结论延迟</th><th>EID 信息密度稀释</th><th>OGR 超额输出</th><th>SSF 奉承与骑墙</th><th>CCI 句法负荷</th><th>PNI 欧化名物化</th><th>OSC 推理空转</th><th>VTR 语言抽动</th></tr></thead>
+<tbody><tr><td class=rank>1</td><td class=model>demo-tidy</td><td class=score><span class=bar style='width:0.1%'></span><b>0.1</b></td><td>0.0</td><td>0.7</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.2</td><td>0.0</td><td>0.0</td></tr><tr><td class=rank>2</td><td class=model>demo-slop</td><td class=score><span class=bar style='width:73.0%'></span><b>73.0</b></td><td>100.0</td><td>100.0</td><td>83.2</td><td>80.0</td><td>48.0</td><td>0.4</td><td>70.9</td><td>65.7</td></tr></tbody>
+</table>
+<footer>生成于 2026-11-14 00:43 · 2 个模型 · 纯 Python 确定性打分，无裁判模型</footer>
+</main>
+</html>
