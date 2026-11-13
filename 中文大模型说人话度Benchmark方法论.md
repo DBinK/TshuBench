@@ -1,8 +1,8 @@
 # 中文大模型「说人话度」评测基准（Chinese SlopBench / 说人话 Index）方法论规范
 
-> **版本**：v0.2.0  
+> **标准版本**：v1.0.0-release  
 > **制定日期**：2026-11-13  
-> **基线体系**：借鉴英文 SlopBench (arXiv:2609.33905)、The Slop Index、Antislop (arXiv:2510.15061) 及成熟中文去 AI 味实践（Humanizer-zh、Shuorenhua）。
+> **基线体系**：借鉴英文 SlopBench (arXiv:2609.33905)、The Slop Index、Antislop (arXiv:2510.15061) 及工业级中文去 AI 味实践（Humanizer-zh、Shuorenhua）。
 
 ---
 
@@ -41,6 +41,9 @@
    - 7.2 对抗性 Prompt 破解与“伪口语化”防御
    - 7.3 题库分仓与动态防作弊机制
 8. [工程实现与落地路线图（Implementation Roadmap）](#8-工程实现与落地路线图implementation-roadmap)
+9. [附录 A：中文 AI 病灶核心词表与模式清单（Lexicon Assets）](#9-附录-a中文-ai-病灶核心词表与模式清单lexicon-assets)
+10. [附录 B：打分引擎核心算法参考实现（Python Reference Pipeline）](#10-附录-b打分引擎核心算法参考实现python-reference-pipeline)
+11. [附录 C：典型对比案例实测走查（Walkthrough Examples）](#11-附录-c典型对比案例实测走查walkthrough-examples)
 
 ---
 
@@ -412,4 +415,136 @@ $$S_{\text{DIM-C}} = 100 \times \min\left(1.0, \frac{1}{|X|} \sum_{x \in X} c(x)
 ```
 
 ---
-*本规范受开源协议保护，后续迭代版本与更新日志将通过 Git Tag 严格归档记录。*
+
+## 9. 附录 A：中文 AI 病灶核心词表与模式清单（Lexicon Assets）
+
+### 9.1 互联网大厂与高频八股套话词表（Tier 1 黑话）
+`赋能`、`闭环`、`抓手`、`颗粒度`、`对齐`、`拉通`、`沉淀`、`心智`、`组合拳`、`打法`、`生命周期`、`全场景`、`顶层设计`、`底层逻辑`、`垂直领域`、`赛道`、`助推`、`重塑`、`深耕`、`矩阵`、`生态`、`链路`、`协同`、`壁垒`、`拐点`、`发力`、`布局`、`贯通`、`盘活`、`聚合`、`场景化`。
+
+### 9.2 工程师表演腔与伪深沉词表（Tier 2 伪极客）
+非系统级硬核工程语境下被滥用的词汇：
+`兜底`、`压实`、`收敛`、`收束`、`击穿`、`穿透`、`回溯`、`解耦`、`透传`、`归因`、`打穿`、`落盘`、`嗅探`、`水位`、`熔断`、`降级`、`切流`。
+
+### 9.3 虚假空洞升华与鸡汤收尾词表
+`让我们拭目以待`、`让我们共同见证`、`未来已来`、`开启全新篇章`、`不仅是一次更新，更是`、`书写新的辉煌`、`拥抱无限可能`、`期待更多惊喜`、`砥砺前行`、`赋能未来`、`扬帆起航`、`共创美好`。
+
+### 9.4 虚伪客服迎合与废话过渡词表
+`好问题！`、`很高兴为您解答！`、`非常感谢您的提问！`、`希望以上解答对您有所帮助！`、`如果还有其他疑问，欢迎随时向我提问！`、`值得注意的是`、`不可否认的是`、`毋庸置疑`、`毫无疑问`、`显而易见`。
+
+---
+
+## 10. 附录 B：打分引擎核心算法参考实现（Python Reference Pipeline）
+
+以下是用于复现计算核心机械分流水线的纯 Python 参考代码：
+
+```python
+import re
+import math
+from typing import List, Dict, Any
+
+# 正则病灶匹配器库
+RE_LIGHT_VERB = re.compile(r"(?<![不未无])(?:进行|作出|予以|实施)(?:了)?(?:\w{2,4})(?:分析|调整|优化|测试|讨论|评估|总结)")
+RE_BINARY = re.compile(r"(?:不仅(?:仅)?(?:是|能|代表).*?更(?:是|能|代表)|不是.*?而是|与其说是.*?不如说是)")
+RE_FOUR_CHARS = re.compile(r"[\u4e00-\u9fa5]{4}(?:[，、 ][\u4e00-\u9fa5]{4})+")
+RE_SYCOPHANCY = re.compile(r"(?:好问题！|很高兴为您|希望(?:以上)?(?:解答|内容)?能?对您有所帮助|欢迎随时向我提问)")
+RE_ELEVATION = re.compile(r"(?:让我们(?:一起|共同)?(?:见证|期待|拥抱|书写)|未来已来|开启全新篇章)")
+RE_MODAL_PARTICLES = re.compile(r"[啊呢吧嘛哈呀哦啦]")
+
+def split_chinese_sentences(text: str) -> List[str]:
+    # 剥离代码块
+    clean = re.sub(r"```[\s\S]*?```", "", text)
+    clean = re.sub(r"`[^`\n]+`", "", clean)
+    sents = re.split(r"[。！？\n；;!?]+", clean)
+    return [s.strip() for s in sents if len(s.strip()) > 0]
+
+def compute_instance_metrics(text: str, upper_limit: int, register: str) -> Dict[str, float]:
+    """计算单个生成文本的原始物理特征指标"""
+    sents = split_chinese_sentences(text)
+    n_sents = max(1, len(sents))
+    chars = re.findall(r"[\u4e00-\u9fa5]", text)
+    n_chars = max(1, len(chars))
+    
+    # 1. 篇幅膨胀度 (DIM-C)
+    inflation = max(0.0, (n_chars - upper_limit) / upper_limit) if upper_limit > 0 else 0.0
+    
+    # 2. 句长变异系数 (DIM-R)
+    sent_lens = [len(re.findall(r"[\u4e00-\u9fa5]", s)) for s in sents]
+    mean_len = sum(sent_lens) / n_sents
+    variance = sum((l - mean_len) ** 2 for l in sent_lens) / n_sents
+    std_len = math.sqrt(variance)
+    cv_len = std_len / mean_len if mean_len > 0 else 0.0
+    
+    # 3. 词汇与套话指标 (DIM-K)
+    light_verb_cnt = len(RE_LIGHT_VERB.findall(text))
+    binary_cnt = len(RE_BINARY.findall(text))
+    four_char_cnt = len(RE_FOUR_CHARS.findall(text))
+    sycophancy_cnt = len(RE_SYCOPHANCY.findall(text))
+    elevation_hit = 1.0 if RE_ELEVATION.search(text) else 0.0
+    
+    # 4. 口语活性 (DIM-O)
+    particles_cnt = len(RE_MODAL_PARTICLES.findall(text))
+    particle_density = particles_cnt / n_sents
+    
+    return {
+        "n_chars": n_chars,
+        "inflation": inflation,
+        "cv_len": cv_len,
+        "light_verb_rate": light_verb_cnt / n_sents,
+        "binary_rate": binary_cnt / n_sents,
+        "four_char_density": (four_char_cnt * 100) / n_chars,
+        "sycophancy": float(sycophancy_cnt),
+        "elevation": elevation_hit,
+        "particle_density": particle_density
+    }
+
+def normalize_feature(val: float, p05: float, p95: float) -> float:
+    """单侧指标分位数截断归一化至 [0, 100]"""
+    if p95 <= p05:
+        return 0.0
+    norm = (val - p05) / (p95 - p05)
+    return 100.0 * min(1.0, max(0.0, norm))
+
+def normalize_two_sided(val: float, p25: float, p75: float) -> float:
+    """双侧指标偏离度惩罚归一化至 [0, 100]"""
+    iqr = max(1e-5, p75 - p25)
+    b_low = p25 - 0.5 * iqr
+    b_high = p75 + 0.5 * iqr
+    if b_low <= val <= b_high:
+        return 0.0
+    dist = (b_low - val) if val < b_low else (val - b_high)
+    return 100.0 * min(1.0, dist / iqr)
+```
+
+---
+
+## 11. 附录 C：典型对比案例实测走查（Walkthrough Examples）
+
+### 案例 1：线上事故群聊同步（语域：Status，字数要求：100 字内）
+
+#### 【输入 Prompt】：
+> 线上支付网关响应延迟突增，初步排查是 Redis 连接池跑满。请在技术群发一段 100 字以内的事故同步，告知当前进展并安抚非技术运营人员。
+
+#### ❌ 典型模型生成（AI 味严重，Slop Index: 82.4 分）：
+> 大家好！非常抱歉给大家带来困扰。值得注意的是，针对本次支付网关延迟突增的问题，技术团队正予以高度重视，并展开了深度的全链路排查。这不仅是一次偶发的性能抖动，更是对我们底层架构韧性的一次严峻考验。初步归因系 Redis 资源出现水位瓶颈所致，目前我们正在进行连接池参数的动态调优与扩容。请各位运营伙伴稍安勿躁，团队已全员拉通压实责任，让我们携手并肩，共同保障系统的平稳运行！感谢大家的理解与支持！
+
+- **病灶命中分析**：
+  - 篇幅膨胀：要求 100 字以内，实际生成 182 字，膨胀率 $+82\%$（DIM-C 高分扣分）；
+  - 假二元对比：“这不仅是一次偶发的性能抖动，更是对我们底层架构韧性的一次严峻考验”（严重扣分）；
+  - 轻动词泛滥：“正予以高度重视”、“展开了深度的全链路排查”、“正在进行连接池参数的动态调优”；
+  - 工程师黑话堆叠：“全链路排查”、“归因”、“水位瓶颈”、“拉通压实责任”；
+  - 空洞升华收尾：“让我们携手并肩，共同保障系统的平稳运行！感谢大家的理解与支持！”。
+
+---
+
+#### ✅ 说人话人类水准生成（说人话指数: 94.2 分，Slop Index: 5.8 分）：
+> 支付网关刚才延迟有点高，查到了是 Redis 连接池满了。现在正在加机器扩容，大概 10 分钟能恢复正常。用户端可能会有少量重试，请大家先帮忙安抚下商户，有最新进展我马上在群里同步。
+
+- **指标表现分析**：
+  - 篇幅合规：共 86 汉字，完全落入 100 字以内约束（DIM-C: 0 分）；
+  - 动作直接无轻动词：直接用“加机器扩容”、“恢复”，不使用“进行扩容操作”；
+  - 自然口语化与节奏感：长短句交替（“支付网关刚才延迟有点高” 12字短句，“现在正在加机器扩容，大概 10 分钟能恢复正常” 25字长句），句长变异系数 $CV = 0.72$ 完全落入自然人类区间；
+  - 语气诚恳实在：带有明确的时间预期（10分钟）、明确的行动指引（安抚商户），零空洞口号。
+
+---
+
+*文档完结，版本归档标记为 v1.0.0-release。*
