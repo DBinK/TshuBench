@@ -173,6 +173,12 @@ def test_hed_disclaimer_phrases():
     assert crisp == 0.0
 
 
+def test_hed_strong_negation_not_penalized():
+    task = make_task(trap_type="flawed_premise")
+    score, _ = score_hed(task, "这句话非常不建议直接放给用户看。")
+    assert score == 0.0
+
+
 def test_integration_tidy_beats_slop():
     task = make_task()
     tidy = evaluate(task, Sample(task_id=task.id, model="tidy", response=GOOD))

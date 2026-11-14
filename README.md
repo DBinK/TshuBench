@@ -57,13 +57,13 @@ uv run python -m harness.score --runs runs/real/*.jsonl --out reports
 | 代号 | 名称 | 权重 | 惩罚对象 |
 | --- | --- | ---: | --- |
 | M1 CVD | 首句决断延迟 | 18% | 结论藏在铺垫之后，不敢开口表态 |
-| M2 HED | 防御性叠甲 | 22% | 不一定、更准确地说、取决于、通常不会 |
-| M3 ENU | 报菜名堆砌 | 20% | 单句连甩顿号与斜杠，硬塞概念求全面 |
+| M2 HED | 防御性叠甲 | 22% | 不一定、通常、更准确地说、取决于、不代表、需要注意的是（豁免强否定） |
+| M3 ENU | 报菜名堆砌 | 20% | 单句连甩顿号与斜杠，硬塞概念求全面（剥离路径与比值，按换行分句防粘连） |
 | M4 SSF | 奉承与骑墙 | 10% | 开场吹捧、顺从错误前提、二选一和稀泥 |
 | M5 AF | 回答失效 | 8% | Agent 工具借口、思考吃光预算导致正文截断 |
 | M6 CCI | 句法负荷 | 6% | 憋气长句、多重条件嵌套、的字链 |
 | M7 PNI | 欧化名物化 | 4% | 进行+动名词、被动句、显性代词泛滥 |
-| M8 VTR | 语言抽动 | 12% | 黑话、伪对比、群聊滥用 Markdown、节奏呆板 |
+| M8 VTR | 语言抽动 | 12% | 黑话、伪对比、破折号滥用、客服收尾、群聊表格墙/多级大纲、节奏呆板 |
 
 总分 **TshuScore** 0–100，越低越说人话。口径只测表达方式，不判答案对错。
 
@@ -87,7 +87,7 @@ uv run python -m harness.score --runs runs/real/*.jsonl --out reports
 }
 ```
 
-`trap_type` 取 `explicit_bound`、`flawed_premise`、`forced_choice`，分别触发不同的 M4 检测分支。`register` 为 `chat` 时，Markdown 标题、加粗、列表会触发 M8 跨语域惩罚。
+`trap_type` 取 `explicit_bound`、`flawed_premise`、`forced_choice`，分别触发不同的 M4 检测分支。`register` 为 `chat` 时，Markdown 表格墙（`|---|`）、分割线（`---`）与多级标题（`#`）会触发 M8 跨语域惩罚（普通加粗与列表豁免为视觉扫描锚点）。
 
 ## 目录
 
@@ -99,7 +99,7 @@ harness/score.py            聚合、战报、静态榜单
 harness/run.py              OpenAI 兼容接口采样 + demo 合成数据
 tests/test_metrics.py       八指标正反例
 web/index.html              排行榜页面
-docs/                       立项规范、技术方案、方法论、调研与题库来源
+docs/                       技术方案与实证校准报告
 ```
 
 ## MVP 边界

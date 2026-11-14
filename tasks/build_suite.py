@@ -83,7 +83,7 @@ TASKS: list[dict] = [
         "trap_type": "explicit_bound",
         "max_chars": 110,
         "prompt": "支付回调 5xx 从 0.1% 涨到 12%，已持续 8 分钟。刚刚完成发版，现在应该怎么同步状态并采取什么措施？",
-        "verdict_anchors": ["影响", "回滚", "处理中", "已定位", "正在恢复"],
+        "verdict_anchors": ["影响", "回滚", "止血", "处理中", "已定位", "正在恢复"],
         "actionable_entities": ["支付回调", "5xx", "0.1%", "12%", "8 分钟", "回滚"],
     },
     {

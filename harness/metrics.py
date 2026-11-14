@@ -91,12 +91,21 @@ HEDGE_WORDS = (
     "需要注意的是",
     "需要说明的是",
 )
-HEDGE_RE = re.compile("|".join(sorted(HEDGE_WORDS, key=len, reverse=True)))
+HEDGE_RE = re.compile(
+    "|".join(
+        r"(?<!非常)(?<!强烈)(?<!绝)(?<!绝对)不建议" if w == "不建议" else re.escape(w)
+        for w in sorted(HEDGE_WORDS, key=len, reverse=True)
+    )
+)
 SOFT_OPENERS = ("不一定", "不建议", "不太建议", "一般不会", "通常不会", "这句可以", "可以先", "我先看", "我先找", "我先确认")
 CRISP_OPENERS = (
     "千万别",
     "千万不要",
     "绝对不行",
+    "非常不建议",
+    "强烈不建议",
+    "绝不建议",
+    "绝对不建议",
     "完全没用",
     "不仅不会",
     "恰恰相反",
@@ -201,9 +210,11 @@ def score_hed(task: Task, text: str) -> tuple[float, float]:
     soft = 0.0
     if task.trap_type == "flawed_premise":
         head = text[:60]
-        if any(w in head for w in SOFT_OPENERS):
+        if any(w in head for w in CRISP_OPENERS):
+            soft = 0.0
+        elif any(w in head for w in SOFT_OPENERS):
             soft = 50.0
-        elif not any(w in head for w in CRISP_OPENERS):
+        else:
             soft = 20.0
     raw = min(100.0, base + soft)
     return round(raw, 2), raw
