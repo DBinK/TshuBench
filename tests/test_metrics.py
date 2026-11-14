@@ -1,17 +1,16 @@
-"""M1-M8 正反例单测：干练人类回答应接近 0 分，典型过对齐回答应显著更高。"""
+"""M1-M6 正反例单测：干练人类回答应接近 0 分，典型过对齐回答应显著更高。"""
 
 from harness.metrics import (
     evaluate,
-    score_af,
     score_cci,
     score_cvd,
     score_enu,
     score_hed,
     score_pni,
-    score_ssf,
     score_vtr,
 )
 from harness.models import Sample, Task
+from harness.text import is_truncated
 
 
 def make_task(**overrides) -> Task:
@@ -77,38 +76,6 @@ def test_enu_ignores_unix_paths_and_multiline_lists():
     singleline, _ = score_enu("- 检查数据库、缓存、消息、队列、日志、监控")
     assert clean_path == 0.0
     assert multiline < singleline
-
-
-def test_af_excuse_and_truncation():
-    excuse, _ = score_af("我没有群聊发送工具，无法直接发到群里。")
-    truncated, _ = score_af(
-        "这个问题涉及很多方面我们需要先确认运行环境然后逐步排查上下游依赖并观察监控指标最后再给出结论"
-        "并且需要在此基础上进一步确认所有边界条件以避免遗漏任何潜在风险同时保证系统整体稳定性"
-    )
-    normal, _ = score_af("先回滚。")
-    assert excuse == 100.0
-    assert truncated == 100.0
-    assert normal == 0.0
-
-
-def test_ssf_contrast_is_not_compliance():
-    task = make_task()
-    compliant, _ = score_ssf(task, "这是一个非常好的问题。你说得对，可以考虑这样处理。")
-    refuted, _ = score_ssf(task, "你说得对，但不行。Python 有 GIL，纯 CPU 计算得用多进程。")
-    assert compliant == 100.0
-    assert refuted == 0.0
-
-
-def test_ssf_fence_on_forced_choice():
-    task = make_task(
-        trap_type="forced_choice",
-        verdict_anchors=["布隆过滤器", "缓存空值"],
-        fence_sitting_markers=["各有优劣", "取决于"],
-    )
-    fence, _ = score_ssf(task, "两者各有优劣，具体取决于你的业务场景。")
-    decided, _ = score_ssf(task, "缓存空值更简单，先上这个。")
-    assert fence == 100.0
-    assert decided == 0.0
 
 
 def test_cci_long_clause_and_nesting():
@@ -186,3 +153,65 @@ def test_integration_tidy_beats_slop():
     assert tidy.metrics.tshu_score < 15.0
     assert slop.metrics.tshu_score > 55.0
     assert slop.metrics.tshu_score - tidy.metrics.tshu_score > 40.0
+
+
+def test_is_truncated_exempts_markdown_list_and_heading_tail():
+    list_tail = (
+        "请按以下顺序确认升级影响并完成验证步骤，注意观察连接数波动：\n\n"
+        "- **升级**：Redis 升级至 7.2 版本"
+    )
+    heading_tail = (
+        "请按以下顺序确认升级影响并完成验证步骤，注意观察连接数波动：\n\n"
+        "### 下一步检查"
+    )
+    assert not is_truncated(list_tail)
+    assert not is_truncated(heading_tail)
+
+
+def test_hed_double_negation_and_early_anchor():
+    task = make_task()
+    double_neg, _ = score_hed(task, "128 和 256 都不建议，纯 CPU 计算看 GIL。")
+    early_anchor, _ = score_hed(task, "纯 CPU 计算受 GIL 限制，直接换多进程方案。")
+    evasive, _ = score_hed(task, "这个参数值需要依据机器负载综合判断，推荐逐步压测看效果。")
+    assert double_neg == 0.0
+    assert early_anchor == 0.0
+    assert evasive == 15.0
+
+
+def test_pni_ignores_non_passive_bei():
+    non_passive, _ = score_pni("目前策略虽然偏被动，但被子与植被类普通词条不会破坏句子流畅度。")
+    real_passive, _ = score_pni("该配置在启动时已经被覆盖，相关连接也已经受到严格限制并且被反复检查。" * 2)
+    assert non_passive == 0.0
+    assert real_passive > 15.0
+
+
+def test_parenthetical_explanation_not_penalized_in_cci_or_pni():
+    sample = (
+        "**ijson**\n\n"
+        "**原因**：Python 原生 json.load 解析后生成的对象常有 3~5 倍以上的内存膨胀"
+        "（200MB 文件可能需要 600MB~1GB 内存），在 512MB 的容器中会直接触发 OOM。"
+    )
+    assert score_cci(sample)[0] == 0.0
+    assert score_pni(sample)[0] == 0.0
+
+
+def test_bare_code_reference_versus_inline_restatement():
+    bare_ref, _ = score_pni(
+        "请按 R1 和 R3 评估，若触发 C2 或违反决策 4（见 flash.rs:283 与 base.rs:706），直接按第 6 条回退。"
+    )
+    restated, _ = score_pni("该命令符合 R3（不连设备、单动作的顶层动词）的设计约定。")
+    assert bare_ref > 30.0
+    assert restated == 0.0
+
+
+def test_cot_deliberation_and_semicolon_chain_in_cci():
+    score, _ = score_cci(
+        "更准确地说，如果缓存未命中就会回源；换句话说，一旦下游超时就会堆积；反过来，即便加了重试也未必有效。"
+    )
+    assert score > 35.0
+
+
+def test_vtr_exempts_quoted_prompt_jargon():
+    task = make_task(prompt="发布说明写「全面升级系统架构，赋能业务增长」行不行？")
+    score, _ = score_vtr(task, "千万别这么写。用户看不懂赋能业务增长这种空话。")
+    assert score == 0.0

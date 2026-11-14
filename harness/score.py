@@ -17,17 +17,26 @@ from loguru import logger
 from rich import print as rprint
 
 from harness.metrics import evaluate, opening_entropy
-from harness.models import WEIGHTS, ModelReport, Sample, ScoredSample, Task
+from harness.models import WEIGHTS, ModelReport, Sample, ScoredSample, Task, classify_tier
 
 METRIC_LABELS = {
     "cvd": "CVD 首句决断延迟",
     "hed": "HED 防御性叠甲",
     "enu": "ENU 报菜名堆砌",
-    "ssf": "SSF 奉承与骑墙",
-    "af": "AF 回答失效",
     "cci": "CCI 句法负荷",
     "pni": "PNI 欧化名物化",
     "vtr": "VTR 语言抽动",
+}
+
+DEFAULT_EFFORT_BY_MODEL = {
+    "auto/gemini-3.8-flash": "medium",
+    "auto/gemini-4-argon": "medium",
+    "auto/gemini-4-hydrogen": "low",
+    "auto/deepseek-v4.1-flash": "low",
+    "auto/claude-haiku-5-5": "low",
+    "codex/gpt-6-luna": "low",
+    "codex/gpt-6.1-sol": "low",
+    "codex/gpt-6.1-terra": "low",
 }
 
 
@@ -37,19 +46,7 @@ def load_tasks(path: str | Path) -> dict[str, Task]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        raw = json.loads(line)
-        task = Task(
-            id=raw["id"],
-            scenario=raw["scenario"],
-            register=raw["register"],
-            trap_type=raw["trap_type"],
-            max_chars=raw["max_chars"],
-            prompt=raw["prompt"],
-            verdict_anchors=raw["verdict_anchors"],
-            actionable_entities=raw["actionable_entities"],
-            fence_sitting_markers=raw.get("fence_sitting_markers", []),
-            refutation_anchors=raw.get("refutation_anchors", []),
-        )
+        task = Task.model_validate_json(line)
         tasks[task.id] = task
     return tasks
 
@@ -63,15 +60,7 @@ def load_samples(paths: list[str | Path]) -> dict[str, list[Sample]]:
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            raw = json.loads(line)
-            sample = Sample(
-                task_id=raw["task_id"],
-                model=raw["model"],
-                response=raw["response"],
-                think_chars=raw.get("think_chars", 0),
-                latency_ms=raw.get("latency_ms", 0.0),
-                thinking=raw.get("thinking", ""),
-            )
+            sample = Sample.model_validate_json(line)
             grouped.setdefault(sample.model, []).append(sample)
     return grouped
 
@@ -103,6 +92,9 @@ def compute_bootstrap_ci(
 def score_model(
     model: str, samples: list[Sample], tasks: dict[str, Task], n_bootstrap: int = 1000
 ) -> ModelReport:
+    effort = next((s.reasoning_effort for s in samples if s.reasoning_effort), "") or DEFAULT_EFFORT_BY_MODEL.get(
+        model, "默认"
+    )
     known = [s for s in samples if s.task_id in tasks]
     if len(known) < len(samples):
         logger.warning(f"{model} 有 {len(samples) - len(known)} 条样本题目不在题库中，已跳过")
@@ -115,7 +107,15 @@ def score_model(
         scored.append(evaluate(tasks[sample.task_id], sample, opening_penalty))
 
     if not scored:
-        return ModelReport(model, 0, 0.0, {k: 0.0 for k in WEIGHTS}, entropy)
+        return ModelReport(
+            model=model,
+            n_samples=0,
+            tshu_score=0.0,
+            metrics={k: 0.0 for k in WEIGHTS},
+            opening_entropy=entropy,
+            tier=classify_tier(0.0),
+            reasoning_effort=effort,
+        )
 
     averages = {
         key: round(mean(getattr(s.metrics, key) for s in scored), 2) for key in WEIGHTS
@@ -135,6 +135,8 @@ def score_model(
         worst=worst,
         ci_lower=ci_lower,
         ci_upper=ci_upper,
+        tier=classify_tier(ts),
+        reasoning_effort=effort,
     )
 
 
@@ -149,12 +151,18 @@ def primary_profile(metrics: dict[str, float], top_k: int = 2) -> str:
 
 def render_markdown(reports: list[ModelReport]) -> str:
     ranked = sorted(reports, key=lambda r: r.tshu_score)
-    header = "| 排名 | 模型 | TshuScore (95% CI) | 主导病灶画像 | " + " | ".join(METRIC_LABELS.values()) + " |"
-    sep = "| ---: | --- | ---: | --- | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
+    header = (
+        "| 排名 | 模型 | 思考档位 | 梯队 | TshuScore (95% CI) | 主导病灶画像 | "
+        + " | ".join(METRIC_LABELS.values())
+        + " |"
+    )
+    sep = "| ---: | --- | :---: | --- | ---: | --- | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
     rows = [
-        "| {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {} | {} |".format(
+        "| {} | {} | {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {} | {} |".format(
             i,
             r.model,
+            r.reasoning_effort or "默认",
+            r.tier or classify_tier(r.tshu_score),
             r.tshu_score,
             r.ci_lower,
             r.ci_upper,
@@ -168,7 +176,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
         "",
         f"生成时间：{datetime.now():%Y-%m-%d %H:%M}",
         "",
-        "分数越低越说人话，0 分对齐全对齐人类专家基线。[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间。",
+        "分数越低越说人话，0 分对齐人类专家基线。当前榜单基于 24 道高区分度探针题（Calibration Set）进行探索性压力评测，[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间。置信区间明显重叠的模型之间不应解读为统计显著分差，建议结合所属梯队与病灶画像综合判断。",
         "",
         header,
         sep,
@@ -180,6 +188,8 @@ def render_markdown(reports: list[ModelReport]) -> str:
             f"## {report.model}",
             "",
             f"- 样本数：{report.n_samples}",
+            f"- 思考档位：{report.reasoning_effort or '默认'}",
+            f"- 梯队：{report.tier or classify_tier(report.tshu_score)}",
             f"- TshuScore：{report.tshu_score:.2f} (95% CI: [{report.ci_lower:.2f}, {report.ci_upper:.2f}])",
             f"- 首句熵：{report.opening_entropy}",
         ]
@@ -198,10 +208,13 @@ def render_html(reports: list[ModelReport]) -> str:
     for i, report in enumerate(ranked, start=1):
         cells = "".join(f"<td>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
         width = min(100.0, report.tshu_score)
+        effort_text = html.escape(report.reasoning_effort or "默认")
+        tier_text = html.escape(report.tier or classify_tier(report.tshu_score))
         ci_text = f"<span class=ci>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
         profile_text = html.escape(primary_profile(report.metrics))
         rows.append(
             f"<tr><td class=rank>{i}</td><td class=model>{html.escape(report.model)}</td>"
+            f"<td class=effort>{effort_text}</td><td class=tier>{tier_text}</td>"
             f"<td class=score><span class=bar style='width:{width:.1f}%'></span>"
             f"<b>{report.tshu_score:.1f}</b> {ci_text}</td>"
             f"<td class=profile>{profile_text}</td>{cells}</tr>"
@@ -216,15 +229,18 @@ def render_html(reports: list[ModelReport]) -> str:
 *{{box-sizing:border-box}}
 body{{margin:0;padding:48px 24px;background:var(--bg);color:var(--fg);
 font:14px/1.6 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif}}
-main{{max-width:1080px;margin:0 auto}}
+main{{max-width:1180px;margin:0 auto}}
 h1{{font-size:28px;margin:0 0 6px}}
 p.sub{{color:var(--muted);margin:0 0 28px}}
 table{{width:100%;border-collapse:collapse}}
 th,td{{padding:10px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th{{color:var(--muted);font-weight:500;font-size:12px}}
-th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){{text-align:left}}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2),th:nth-child(4),td:nth-child(4){{text-align:left}}
+th:nth-child(3){{text-align:center}}
 td.rank{{color:var(--muted)}}
 td.model{{font-weight:600}}
+td.effort{{text-align:center;color:var(--muted);font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}
+td.tier{{font-size:12px;color:var(--fg)}}
 td.score{{position:relative;min-width:150px}}
 td.score .bar{{position:absolute;left:0;top:50%;height:6px;transform:translateY(-50%);
 background:linear-gradient(90deg,var(--cool),var(--hot));opacity:.35;border-radius:3px}}
@@ -235,36 +251,37 @@ footer{{color:var(--muted);margin-top:28px;font-size:12px}}
 </style>
 <main>
 <h1>TshuBench · 天书榜</h1>
-<p class=sub>量化后训练过对齐导致的可读性退化。分数越低越说人话，0 分对齐人类专家基线。</p>
+<p class=sub>量化后训练过对齐导致的可读性退化。分数越低越说人话，0 分对齐人类专家基线。基于 24 题探索性校准集，CI 重叠区间请结合梯队与画像判断。</p>
 <table>
-<thead><tr><th>#</th><th>模型</th><th>TshuScore</th><th>主导病灶画像</th>{head}</tr></thead>
+<thead><tr><th>#</th><th>模型</th><th>思考档位</th><th>梯队</th><th>TshuScore</th><th>主导病灶画像</th>{head}</tr></thead>
 <tbody>{''.join(rows)}</tbody>
 </table>
-<footer>生成于 {datetime.now():%Y-%m-%d %H:%M} · {len(ranked)} 个模型 · 纯 Python 确定性打分，无裁判模型</footer>
+<footer>生成于 {datetime.now():%Y-%m-%d %H:%M} · {len(ranked)} 个模型 · 确定性 AST + jieba 词法打分，无裁判模型</footer>
 </main>
 </html>
 """
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="TshuBench 打分器")
-    parser.add_argument("--tasks", default="tasks/eval_suite_v2.jsonl")
-    parser.add_argument("--runs", nargs="+", required=True)
-    parser.add_argument("--out", default="reports")
-    parser.add_argument("--html", default="web/index.html")
-    args = parser.parse_args()
-
-    tasks = load_tasks(args.tasks)
-    grouped = load_samples(args.runs)
+def run_scoring(
+    tasks_path: str | Path,
+    runs: list[str | Path],
+    out_dir: str | Path = "reports",
+    html_path: str | Path = "web/index.html",
+) -> list[ModelReport]:
+    """执行批量打分并生成 JSON、Markdown 战报与 HTML 榜单。"""
+    tasks = load_tasks(tasks_path)
+    grouped = load_samples(runs)
     reports = [score_model(model, samples, tasks) for model, samples in grouped.items()]
     if not reports:
         raise SystemExit("没有可打分的样本")
 
-    out = Path(args.out)
+    out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     payload = [
         {
             "model": r.model,
+            "reasoning_effort": r.reasoning_effort or "默认",
+            "tier": r.tier or classify_tier(r.tshu_score),
             "n_samples": r.n_samples,
             "tshu_score": r.tshu_score,
             "ci_lower": r.ci_lower,
@@ -287,13 +304,30 @@ def main() -> None:
     )
     (out / "report.md").write_text(render_markdown(reports), encoding="utf-8")
 
-    html_path = Path(args.html)
-    html_path.parent.mkdir(parents=True, exist_ok=True)
-    html_path.write_text(render_html(reports), encoding="utf-8")
+    html_out = Path(html_path)
+    html_out.parent.mkdir(parents=True, exist_ok=True)
+    html_out.write_text(render_html(reports), encoding="utf-8")
 
     for report in sorted(reports, key=lambda r: r.tshu_score):
-        rprint(f"[bold]{report.model:<20}[/bold] TshuScore [cyan]{report.tshu_score:>6.2f}[/cyan]  样本 {report.n_samples}")
-    logger.success(f"已写出 {out/'scores.json'}、{out/'report.md'}、{html_path}")
+        rprint(
+            f"[bold]{report.model:<28}[/bold] "
+            f"[dim]{(report.reasoning_effort or '默认'):<6}[/dim] "
+            f"[dim]{report.tier:<11}[/dim] "
+            f"TshuScore [cyan]{report.tshu_score:>6.2f}[/cyan] "
+            f"[{report.ci_lower:.2f}, {report.ci_upper:.2f}]  样本 {report.n_samples}"
+        )
+    logger.success(f"已写出 {out/'scores.json'}、{out/'report.md'}、{html_out}")
+    return reports
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="TshuBench 打分器")
+    parser.add_argument("--tasks", default="tasks/eval_suite_v2.jsonl")
+    parser.add_argument("--runs", nargs="+", required=True)
+    parser.add_argument("--out", default="reports")
+    parser.add_argument("--html", default="web/index.html")
+    args = parser.parse_args()
+    run_scoring(args.tasks, args.runs, args.out, args.html)
 
 
 if __name__ == "__main__":

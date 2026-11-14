@@ -1,8 +1,16 @@
-from harness.score import compute_bootstrap_ci, primary_profile
+from harness.models import Sample, Task, classify_tier
+from harness.score import compute_bootstrap_ci, primary_profile, render_html, render_markdown, score_model
+
+
+def test_classify_tier():
+    assert classify_tier(9.5) == "T1 · 人话级"
+    assert classify_tier(11.0) == "T2 · 黑话级"
+    assert classify_tier(14.99) == "T2 · 黑话级"
+    assert classify_tier(15.0) == "T3 · 天书级"
 
 
 def test_primary_profile_picks_top_metrics():
-    metrics = {"cvd": 12.0, "hed": 25.5, "enu": 30.1, "ssf": 0.0, "af": 0.0, "cci": 1.0, "pni": 0.0, "vtr": 5.0}
+    metrics = {"cvd": 12.0, "hed": 25.5, "enu": 30.1, "cci": 1.0, "pni": 0.0, "vtr": 5.0}
     profile = primary_profile(metrics)
     assert "ENU 报菜名堆砌(30.1)" in profile
     assert "HED 防御性叠甲(25.5)" in profile
@@ -27,3 +35,29 @@ def test_bootstrap_ci_range():
     assert 1.0 <= lower <= 5.5
     assert 5.5 <= upper <= 10.0
     assert lower <= upper
+
+
+def test_score_model_records_reasoning_effort():
+    task = Task(
+        id="t1",
+        scenario="code_review_bug_triage",
+        register="chat",
+        trap_type="explicit_bound",
+        max_chars=120,
+        prompt="测试问题？",
+        verdict_anchors=["直接改"],
+        actionable_entities=["改这里"],
+    )
+    tasks = {"t1": task}
+    sample_low = Sample(task_id="t1", model="custom/sonnet", response="直接改。", reasoning_effort="low")
+    sample_legacy = Sample(task_id="t1", model="auto/gemini-4-argon", response="直接改。")
+    r_low = score_model("custom/sonnet", [sample_low], tasks, n_bootstrap=50)
+    r_legacy = score_model("auto/gemini-4-argon", [sample_legacy], tasks, n_bootstrap=50)
+    assert r_low.reasoning_effort == "low"
+    assert r_legacy.reasoning_effort == "medium"
+    md = render_markdown([r_low, r_legacy])
+    html_doc = render_html([r_low, r_legacy])
+    assert "| 思考档位 |" in md
+    assert "- 思考档位：low" in md
+    assert "<th>思考档位</th>" in html_doc
+    assert "<td class=effort>medium</td>" in html_doc

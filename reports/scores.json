@@ -1,361 +1,451 @@
 [
   {
-    "model": "auto/claude-haiku-5-5",
+    "model": "antigravity-bridge/claude-opus-5-5",
+    "reasoning_effort": "low",
+    "tier": "T2 · 黑话级",
     "n_samples": 24,
-    "tshu_score": 13.56,
-    "ci_lower": 9.55,
-    "ci_upper": 18.09,
-    "opening_entropy": 0.9506,
+    "tshu_score": 13.02,
+    "ci_lower": 8.84,
+    "ci_upper": 17.19,
+    "opening_entropy": 0.9581,
     "metrics": {
-      "cvd": 18.51,
-      "hed": 20.9,
-      "enu": 17.87,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 1.22,
-      "pni": 6.36,
-      "vtr": 14.4
+      "cvd": 22.92,
+      "hed": 9.16,
+      "enu": 21.65,
+      "cci": 4.02,
+      "pni": 9.71,
+      "vtr": 13.18
     },
     "worst": [
       {
-        "task_id": "inc_t01",
-        "tshu_score": 36.8,
-        "response": "## 一、先定性：按 P1 事故处理，优先止损\n\n这是支付回调的 5xx 从 0.1% 升到 12%，且发版后立即出现，应直接按 P1 处理：\n\n- **宣布事故**，指定 Incident Commander（IC）负责决策，避免多人同时改线上。\n- **决策原则**：发版后 8 分钟内出现明确异常，默认先回滚，不要在线上长时间排查。\n- 支付回调失败会直接影响用户付款和订单状态，每多等一分钟，积压和对账成本都会增加。\n\n## 二、立即同步状态（5 分钟内）\n\n在事故群发出第一条同步，内容可以参考：\n\n```\n【P1 事故】支付回调 5xx 异常\n- 开始时间：HH:MM（约 8 分钟前）\n- 现象：支付回调接口 5xx 从 0.1% 升至 12%，持续中\n- 影响：部分支付订单回调失败，可能导致订单状态不一致\n- 怀疑原因：刚完成的版本 vX.X.X 发布\n- 当前动作：准备回滚 / 已回滚，IC：XXX\n- 下次同步：HH:MM（15 分钟后）\n```\n\n同时：\n- 通知客服、运营和财务，告知可能有“已付款未更新”的订单，请勿手动改单。\n- 如有对外影响，更新状态页。\n- 通知支付渠道方（如需要），确认他们侧的重试情况。\n\n## 三、采取的措施（按优先级）\n\n**1. 止损（立即执行）**\n- 回滚到上一个稳定版本。如果有 feature flag，可以先关闭本次发版的新功能。\n- 如果只影响某个渠道或某类回调，可以临时隔离这部分流量。\n- 不要在线上直接修改代码或热修，除非回滚不可行。\n\n**2. 快速取证（与回滚并行，不阻塞回滚）**\n- 按 5xx 的 endpoint、渠道、状态码、异常堆栈聚合日志，看是否集中在某个路径。\n- 对比发版 diff：是否有依赖变更、配置/环境变量改动、数据库迁移、签名验签逻辑、超时参数、连接池配置等。\n- 检查下游依赖：DB、Redis、MQ、证书、第三方验签、IP 白名单等是否同时异常。\n- 确认是否与发版强相关：回滚后错误率回落，基本就能确认。\n\n**3. 验证回滚效果**\n- 观察 5 到 10 分钟：5xx 是否回到 0.1% 左右，P99 延迟是否正常，错误日志是否停止新增。\n- 观察回调成功率和订单状态更新是否恢复。\n\n## 四、支付场景的特别注意事项\n\n**1. 失败回调的补偿**\n- 确认支付渠道的重试策略（次数、间隔、最长时间窗口）。不同渠道差异较大，有的会在一定时间后停止重试，需要尽快确认。\n- 回滚后，主动查询渠道侧的订单状态，或让渠道重推回调，把失败的订单补齐。\n- 补偿的前提是**幂等**：同一笔订单重复回调，只能处理一次，不能重复入账、重复发货。\n\n**2. 对账与一致性**\n- 圈定事故时间窗口（发版时间到回滚完成时间），拉出该时间段的支付订单。\n- 对比“渠道已支付”和“内部已支付”的状态，找出以下几类问题：\n  - 渠道已支付，内部未更新（需补单）\n  - 内部已更新，但金额或状态异常（需排查）\n  - 重复回调导致的重复处理（需冲正）\n- 补单通过标准流程完成，不要人工直接改库。\n\n**3. 禁止的操作**\n- 不要手动把订单标记为已支付。\n- 不要在没有确认幂等的情况下批量重放回调。\n- 不要在事故期间继续发其他版本。\n\n## 五、事故后续（恢复后 24 小时内）\n\n- 完成对账和补偿，并确认无遗留差异。\n- 输出复盘：根因、时间线、为什么测试和灰度没有拦住、监控告警为何响应慢。\n- 改进项建议：\n  - 发版增加灰度/金丝雀，并在灰度阶段盯回调成功率。\n  - 为支付回调 5xx 设置自动告警和发版后自动回滚的阈值（例如 1 分钟内 5xx 超过 1% 自动暂停发布）。\n  - 回调接口保证幂等，并补充重放和对账工具。\n\n**总结一句话**：先宣布事故并同步，然后优先回滚止损，回滚的同时取证；恢复后用幂等补偿和渠道对账把失败回调补齐，不要手动改单。"
+        "task_id": "inc_t03",
+        "tshu_score": 35.64,
+        "response": "**不建议这么做。** 它不一定快，还可能出新问题：\n\n1. **空间可能根本没释放。** 正在运行的进程（nginx、应用等）还开着日志文件，删掉后文件句柄还在，磁盘空间要等进程重启才会回收。结果是 `df` 显示还是满的。\n2. **服务可能起不来。** `/var/log/*` 会把 `nginx/`、`mysql/`、`journal/`、`audit/` 这些**子目录**一起删掉，有些服务启动时发现日志目录不在就会报错退出。\n3. **排查线索没了。** 磁盘突然满，常常是某个程序在疯狂报错刷日志。日志一删，原因就查不到了，过几天还会再满。\n4. **问题可能不在 /var/log。** 也可能是 Docker、`/tmp`、数据库或者备份文件占了空间。\n\n**更快也更稳的做法：**\n\n```bash\n# 1. 先确认是哪个分区满了\ndf -h\n\n# 2. 找出大头（-x 只看当前文件系统）\ndu -xh /var/log --max-depth=1 | sort -rh | head\ndu -xh / --max-depth=1 2>/dev/null | sort -rh | head\n\n# 3. 先删已轮转的旧日志（最安全）\nfind /var/log -type f \\( -name \"*.gz\" -o -name \"*.[0-9]\" -o -name \"*.old\" \\) -delete\n\n# 4. 正在写的大日志用\"清空内容\"，不要删文件\ntruncate -s 0 /var/log/xxx.log\n\n# 5. systemd journal 压缩到指定大小\njournalctl --vacuum-size=200M\n\n# 6. 查找\"已删除但仍被占用\"的文件\nlsof +L1\n#    找到后重启对应服务，或者：\n#    : > /proc/<PID>/fd/<FD号>\n```\n\n**之后防止再满：**\n- 看看是哪个日志涨得特别快，`tail` 一下找出刷屏的原因\n- 检查 `/etc/logrotate.d/` 的配置，设置好轮转和压缩\n- 在 `/etc/systemd/journald.conf` 里设置 `SystemMaxUse=500M`\n\n需要的话，可以把 `df -h` 和 `du` 的输出发给我，我帮你看看该删哪些。"
       },
       {
         "task_id": "inc_t04",
-        "tshu_score": 34.94,
-        "response": "**不一定。** 把 `initialDelaySeconds` 调到 300 只对一种情况有效：应用启动很慢，导致 liveness 探针在它就绪前就失败，kubelet 把容器杀掉重启。如果是其他原因，这个改动不会解决问题，还可能让故障更难发现。\n\n先确认原因：\n\n```bash\n# 1. 看 Pod 事件，常见线索：Liveness probe failed / OOMKilled / Error\nkubectl describe pod <pod-name>\n\n# 2. 看当前容器日志\nkubectl logs <pod-name>\n\n# 3. 看上一次崩溃的日志（最有用，CrashLoopBackOff 时常用这个）\nkubectl logs <pod-name> --previous\n```\n\n根据结果判断：\n\n| 现象 | 原因 | 处理方向 |\n|---|---|---|\n| 事件里有 `Liveness probe failed`，日志显示应用刚启动就被杀 | 启动慢，探针太早 | 加 `startupProbe`（比单纯加大 `initialDelaySeconds` 更合适），或适当增加延迟 |\n| `Reason: OOMKilled` | 内存超过 limit | 调大 `resources.limits.memory`，或排查内存泄漏 |\n| 日志有异常堆栈、`panic`、`Exception` | 应用本身报错 | 修代码或配置（数据库连不上、环境变量缺失、配置文件错误等） |\n| `exec format error`、`no such file or directory` | 镜像或启动命令问题 | 检查 `command`/`args` 和镜像架构 |\n| 退出码 `0` 但容器立刻结束 | 进程执行完就退出了（如前台进程没挂起） | 检查启动命令是否常驻运行 |\n| 日志为空 | 启动命令或入口有问题 | 用 `kubectl run` 或 `kubectl debug` 进入镜像手动执行命令排查 |\n\n如果你把 `kubectl describe pod` 的 Events 部分和 `kubectl logs --previous` 的输出贴出来，我可以帮你更具体地判断。"
+        "tshu_score": 31.86,
+        "response": "**不一定能好，而且就算好了也多半只是把问题藏起来了。** 调大 `initialDelaySeconds` 只在一种情况下有用：容器本身没问题，只是启动慢，还没准备好就被 livenessProbe 判定失败、被 kubelet 杀掉了。但 CrashLoopBackOff 更常见的原因是应用自己退出了，比如配置错误、缺环境变量或 Secret、连不上依赖、启动命令写错、OOM。这些情况下探针延迟调多大都没用。\n\n## 先花两分钟确认原因\n\n```bash\nkubectl describe pod <pod-name>\nkubectl logs <pod-name> --previous   # 看上一次崩溃前的日志\n```\n\n在 `describe` 的输出里重点看两处：\n\n**1. `Last State: Terminated` 里的 Reason 和 Exit Code**\n\n| 现象 | 大概率原因 |\n|---|---|\n| `Reason: OOMKilled`，Exit Code 137 | 内存不够，调大 `resources.limits.memory` 或排查内存泄漏 |\n| Exit Code 1 或其他非 0 值 | 应用自己报错退出，去看 `logs --previous` |\n| Exit Code 137，但不是 OOMKilled | 被 SIGKILL 杀掉，常见是探针失败导致的 |\n| Exit Code 0 | 主进程跑完就结束了，比如启动命令不是常驻进程 |\n\n**2. Events 里有没有 `Liveness probe failed` 和 `Container xxx failed liveness probe, will be restarted`**\n\n只有确实是这种情况，才是探针的问题。\n\n## 如果确实是启动慢、被探针杀掉\n\n更好的做法是加一个 **startupProbe**，而不是把 liveness 的延迟硬拉到 300 秒：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30     # 最多等 30 × 10 = 300 秒\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 3\n  failureThreshold: 3\n```\n\n这样做的好处：\n- 应用 30 秒就起来了，就从第 30 秒开始正常检测，不用白等 300 秒。\n- 启动完成后 livenessProbe 立刻接管。如果用 `initialDelaySeconds: 300`，应用真的卡死时，每次重启后都要 5 分钟才能发现。\n\n## 另外几个常见的探针坑\n\n- **`timeoutSeconds` 默认只有 1 秒**。接口稍慢一点或者 GC 一下就会超时，可以调到 3 到 5 秒。\n- **探针路径或端口写错**，比如应用监听的是 `127.0.0.1` 而不是 `0.0.0.0`，或者端口对不上。\n- **livenessProbe 里检查了数据库、Redis 等外部依赖**。依赖一抖，所有 Pod 会一起被重启。liveness 应该只检查进程自己是否还活着，检查依赖的逻辑放到 readinessProbe 里。\n\n如果方便的话，把 `kubectl describe pod` 的 State 和 Events 部分，以及 `kubectl logs --previous` 的最后几十行贴出来，我可以帮你判断具体是哪种情况。"
+      },
+      {
+        "task_id": "inc_t01",
+        "tshu_score": 29.99,
+        "response": "先看一下当前有没有相关的后台任务，比如发版或者监控任务：我查了这个会话的后台任务，目前没有在跑的，所以看不到发版或监控的数据。下面的判断只依据你给的信息：发版后 5xx 从 0.1% 涨到 12%，已经持续 8 分钟，发版是最可能的原因。\n\n## 一、先处理：马上回滚，不要先排查原因\n\n1. **立即回滚到上一个版本**（或者关掉这次新加的功能开关）。支付回调出错直接影响资金状态，先止血，原因回滚后再查。\n2. **暂停所有后续发版和配置变更**，避免多个变化混在一起，分不清是哪个引起的。\n3. **回滚后盯 5–10 分钟**，确认：\n   - 5xx 回到 0.1% 左右\n   - 回调延迟（P99）、下游数据库和队列恢复正常\n   - 如果回滚后还是高，说明可能不是代码的问题，要查一起变更的配置、数据库迁移（DDL）、证书/密钥、依赖服务。\n\n> 注意：如果这次发版带了**不能撤回的数据库改动**，回滚前先确认旧代码能兼容新的表结构。不兼容的话，改用\"关功能开关 / 切流量到旧实例\"。\n\n## 二、同步状态：现在就发第一条\n\n**谁要知道：** 值班负责人、支付/交易负责人、客服负责人、SRE；如果商户可能感知到，再加对外沟通的人。\n\n**第一条通报模板（现在发）：**\n> 【P1 故障】支付回调异常\n> - 现象：23:21 起支付回调 5xx 从 0.1% 升到 12%，持续约 8 分钟\n> - 影响：约 12% 的支付回调处理失败，可能导致订单状态没更新（用户已付款但显示未支付）\n> - 疑似原因：23:2x 刚完成的发版 [版本号/变更单]\n> - 当前动作：正在回滚，负责人 @xxx\n> - 下次更新：15 分钟内或有进展时\n\n**后面的节奏：** 每 15 分钟更新一次，就算没进展也发\"仍在处理\"。恢复后发一条\"已恢复，进入观察期\"。\n\n## 三、支付场景要额外处理的\n\n1. **回调重试**：大部分支付渠道（微信/支付宝/银行等）会对失败的回调重试，但次数和时间窗有限。恢复后要确认重试的回调已经处理成功。\n2. **重复处理**：重试会让同一个回调到达多次。要确认处理逻辑防重（同一笔订单只处理一次），避免重复入账或重复发货。\n3. **补单/对账**：\n   - 从日志里拉出故障期间（约 23:20 到恢复）所有返回 5xx 的回调订单号\n   - 主动调用渠道的查询接口，把订单状态补上\n   - 第二天的对账要重点核对这个时间段\n4. **客服准备**：告诉客服\"付了款但订单显示未支付\"的用户怎么安抚，以及预计多久能补单。\n\n## 四、恢复后再做\n\n- 保留现场：新版本的错误日志、调用链、出错的接口和报错类型\n- 找根因：对比新旧版本的差异，重点看回调验签、序列化、超时设置、数据库连接池、依赖的版本\n- 复盘时提一个改进：**支付链路发版要灰度，并设置 5xx 超阈值自动回滚**。这次 8 分钟才处理，说明告警或自动回滚没起作用。\n\n**一句话：先回滚，同时发第一条通报，恢复后补单对账，最后查根因。**\n\n如果你把回滚命令、部署脚本或监控查询发给我，我可以帮你判断回滚后的指标是否真的恢复了。"
+      },
+      {
+        "task_id": "clr_t03",
+        "tshu_score": 25.95,
+        "response": "**不一定。** 把堆加到 16G 有时能缓解问题，但不能保证 Full GC 消失，有些情况下反而更糟。关键要看 Full GC 是什么原因触发的。\n\n## 先分清是哪种原因\n\n| 触发原因 | 加大堆有没有用 |\n|---|---|\n| 堆确实偏小，活跃对象正常但余量不够 | ✅ 有用，Full GC 会明显减少 |\n| **内存泄漏**（老年代回收后占用还在一直上涨） | ❌ 只是推迟。原来几小时一次，可能变成一天一次，但每次停顿更长 |\n| **Metaspace 满了**（类加载太多、动态代理/Groovy/反射生成类） | ❌ 跟堆大小无关，要调 `-XX:MaxMetaspaceSize` 或排查类泄漏 |\n| 代码或依赖库调用了 **`System.gc()`**（比如 RMI、NIO DirectBuffer 回收） | ❌ 无关，可以考虑 `-XX:+ExplicitGCInvokesConcurrent` 或 `-XX:+DisableExplicitGC`（要谨慎） |\n| **G1 巨型对象**（Humongous）分配过多、碎片化 | ⚠️ 部分有用，更有效的是调 `G1HeapRegionSize` 或减少大对象 |\n| CMS 的 concurrent mode failure / 晋升失败 | ⚠️ 部分有用，也要调触发阈值和新生代大小 |\n| `-Xms` 和 `-Xmx` 设置不一样，堆扩缩容 | ❌ 应该把两者设成一样 |\n\n## 加大堆可能带来的副作用\n\n1. **单次 Full GC 停顿更长**：用 Parallel GC 时，16G 堆一次 Full GC 可能停好几秒。次数少了，但每次更痛。\n2. **机器或容器内存不够**：堆外内存、Metaspace、线程栈、DirectBuffer 也要占空间。16G 堆一般至少要预留 18~20G。在 K8s 里很容易被 OOMKilled。\n3. **不要超过约 32G**，否则会失去压缩指针（Compressed Oops）。16G 没问题。\n\n## 建议的排查步骤\n\n1. **打开 GC 日志**（JDK 9+）：\n   ```\n   -Xlog:gc*:file=gc.log:time,uptime,level,tags\n   ```\n   日志里每次 Full GC 都写了触发原因，比如 `Allocation Failure`、`Metadata GC Threshold`、`System.gc()`、`G1 Humongous Allocation`。\n2. **看 Full GC 之后老年代剩多少**：\n   - 回收后降到很低：说明堆偏小或分代比例不合适，加堆有效。\n   - 回收后还很高，而且越来越高：很可能是泄漏，用 `jmap -dump:live,format=b,file=heap.hprof <pid>` 导出，再用 MAT 分析。\n3. **用 `jstat -gcutil <pid> 1000`** 实时看各区的使用率和 GC 次数。\n\n如果方便，可以发一下以下信息，我帮你判断具体原因：\n- JDK 版本和垃圾收集器（G1、Parallel 还是 CMS）\n- 一段 Full GC 的日志\n- Full GC 前后老年代的占用情况"
+      },
+      {
+        "task_id": "rel_t03",
+        "tshu_score": 25.94,
+        "response": "可以不写技术细节，但「全面升级系统架构，赋能业务增长」这句话用户也看不懂，而且读完不知道跟自己有什么关系。「赋能业务增长」是写给公司内部看的，用户不关心。\n\n用户看发布说明，主要想知道三件事：\n1. **我能感觉到什么变化？** 比如更快了、更稳了、多了什么功能。\n2. **有没有需要我做的？** 比如要重新登录、要更新App、某些设置换了位置。\n3. **有没有影响？** 比如维护期间暂停服务、旧版本不再支持。\n\n建议把技术改动换成用户能感受到的效果来写，例如：\n\n> **本次更新**\n> - 页面加载速度提升，打开首页更快\n> - 优化高峰时段的稳定性，减少卡顿和报错\n> - 修复了部分用户无法上传图片的问题\n>\n> 更新后需重新登录一次，给您带来不便敬请谅解。\n\n如果这次改的确实都在后台，用户完全感觉不到，也可以只写一句：\n\n> 优化了系统性能和稳定性，使用体验更流畅。\n\n这样短，也不空。\n\n你告诉我这次具体改了什么（技术描述也没关系），我帮你改写成用户能看懂的版本。"
+      }
+    ]
+  },
+  {
+    "model": "antigravity-bridge/claude-sonnet-5-5",
+    "reasoning_effort": "low",
+    "tier": "T1 · 人话级",
+    "n_samples": 24,
+    "tshu_score": 10.24,
+    "ci_lower": 7.29,
+    "ci_upper": 13.2,
+    "opening_entropy": 0.9549,
+    "metrics": {
+      "cvd": 18.3,
+      "hed": 11.46,
+      "enu": 16.63,
+      "cci": 1.28,
+      "pni": 8.06,
+      "vtr": 5.94
+    },
+    "worst": [
+      {
+        "task_id": "inc_t04",
+        "tshu_score": 25.22,
+        "response": "不一定。调到 300 只在一种情况下有用：容器是被 livenessProbe 杀掉的，而且原因是启动太慢。\n\n## 先判断崩溃原因\n```bash\nkubectl describe pod <pod> -n <ns>\nkubectl logs <pod> -n <ns> --previous\n```\n重点看这几项：\n\n| 现象 | 原因 | 调 initialDelaySeconds 有用吗 |\n|---|---|---|\n| Events 里有 `Liveness probe failed` 和 `Killing container` | 应用启动慢，探针来得太早 | **有用**，但更推荐 startupProbe |\n| `Last State: Terminated`，Reason 为 `Error`，Exit Code 为 1 或 2 | 应用自己崩溃，例如配置错误、依赖连不上、缺环境变量、启动命令错误 | **没用** |\n| Reason 为 `OOMKilled`，Exit Code 为 137 | 内存限制太小 | **没用**，要调大 `resources.limits.memory` |\n| Exit Code 为 127 或 126 | 命令或入口不存在，或没有执行权限 | **没用** |\n| 启动后立刻退出，Exit Code 为 0 | 主进程执行完就结束了，没有常驻 | **没用** |\n\n## 如果确实是探针导致的\n直接设成 300 有副作用。容器启动后，要等 300 秒才开始探活。这期间如果进程真的卡死了，K8s 发现不了。\n\n更好的做法是用 `startupProbe`：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 5\n  failureThreshold: 60      # 最多等 5*60=300 秒\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 3\n```\n\nstartupProbe 成功之前，liveness 和 readiness 都不会执行。应用启动快就很快接管，启动慢也有 300 秒的余量。启动完成后，liveness 仍然能及时发现问题。\n\n你可以把 `kubectl describe pod` 的 Events 和 `Last State` 部分，加上 `logs --previous` 的最后几十行贴给我，我帮你判断具体原因。"
       },
       {
         "task_id": "inc_t03",
-        "tshu_score": 25.61,
-        "response": "不建议直接 `rm -rf /var/log/*`。它看起来快，但有几个问题：\n\n- **可能删掉服务需要的目录结构**：`/var/log/` 下有 `nginx/`、`journal/`、`apt/` 等子目录，删除后服务可能报错或无法写日志。\n- **空间不一定释放**：很多进程还持有已删除日志文件的句柄，空间要等进程重启才会真正释放。\n- **丢失排查证据**：服务出问题时，日志往往是唯一线索，删了就没了。\n- **影响可能比磁盘满更严重**：服务写日志失败，有时会直接崩溃。\n\n**更安全的做法：**\n\n1. **先定位占用大户**\n   ```bash\n   df -h                          # 看哪个分区满了\n   du -sh /var/log/* | sort -h    # 看 /var/log 下哪些最大\n   du -ah /var/log | sort -rh | head -20   # 找最大的文件\n   ```\n\n2. **清理 systemd 日志（如果 journal 很大）**\n   ```bash\n   journalctl --disk-usage\n   sudo journalctl --vacuum-size=500M    # 只保留500M\n   # 或者\n   sudo journalctl --vacuum-time=7d      # 只保留7天\n   ```\n\n3. **删除旧的轮转日志**（比正在写的日志安全得多）\n   ```bash\n   find /var/log -name \"*.gz\" -mtime +7 -delete\n   find /var/log -name \"*.[0-9]\" -mtime +7 -delete\n   ```\n\n4. **正在写的大日志，用清空而不是删除**（进程可以继续写，空间立即释放）\n   ```bash\n   sudo truncate -s 0 /var/log/某个大日志.log\n   # 或\n   sudo : > /var/log/某个大日志.log\n   ```\n\n5. **检查\"已删除但仍被占用\"的文件**\n   ```bash\n   sudo lsof +L1\n   ```\n   如果有，重启对应服务即可释放空间。\n\n6. **手动触发日志轮转**\n   ```bash\n   sudo logrotate -f /etc/logrotate.conf\n   ```\n\n**另外注意**：磁盘满不一定是 `/var/log` 的问题，也可能是 `/tmp`、Docker 镜像和容器日志（`docker system df`）、core dump 或数据库数据。先用 `du` 确认再动手。\n\n如果你告诉我 `du -sh /var/log/* | sort -h` 的输出，我可以帮你判断具体该清哪些。"
+        "tshu_score": 21.95,
+        "response": "能清出空间，但不一定是最快或最稳的做法，我不建议直接这么做。\n\n**风险**\n1. **空间可能释放不了。** 如果进程（nginx、mysqld、rsyslog 等）还开着日志文件，`rm` 之后文件只是从目录里消失，空间要等进程关闭文件才会释放。结果就是 `df` 显示还是满的，而且你再也看不到是哪个文件占的。\n2. **目录结构和权限会丢。** `/var/log/*` 会把 `nginx/`、`mysql/`、`journal/` 这些子目录一起删掉。有些服务找不到目录或文件就启动失败，或者不再写日志。\n3. **排查线索没了。** 磁盘为什么满，往往要看日志才知道。\n4. **可能不是日志的问题。** 先确认真正占空间的是什么。\n\n**更稳的做法（同样很快）**\n\n```bash\n# 1. 确认是哪里满了（也看看 inode）\ndf -h; df -i\ndu -xh /var --max-depth=2 2>/dev/null | sort -h | tail -20\n\n# 2. 找出 /var/log 里最大的文件\ndu -sh /var/log/* | sort -h | tail\n\n# 3. 清空大文件，不要删除（进程持有的 fd 也能立刻释放空间）\ntruncate -s 0 /var/log/xxx.log     # 或 : > /var/log/xxx.log\n\n# 4. 删除已轮转的旧日志\nrm -f /var/log/*.gz /var/log/*.[0-9] /var/log/*/*.gz\n\n# 5. 如果是 systemd journal\njournalctl --disk-usage\njournalctl --vacuum-size=200M\n\n# 6. 如果之前已经删过文件但空间没释放\nlsof +L1        # 找出\"已删除但仍被占用\"的文件\n# 然后重启对应服务，或用 truncate /proc/<pid>/fd/<n> 清空\n```\n\n**事后建议**\n- 检查 `/etc/logrotate.d/` 配置，确认日志会按大小或时间轮转、压缩。\n- 给磁盘使用率加监控告警，比如 80% 就告警。\n- 找出日志暴涨的根因，比如某个服务在循环报错。\n\n如果你把 `df -h` 和 `du -sh /var/log/* | sort -h | tail` 的输出贴出来，我可以帮你判断该清哪些。"
+      },
+      {
+        "task_id": "rel_t03",
+        "tshu_score": 21.66,
+        "response": "可以这样写，但这句话偏口号，用户看完还是不知道自己得到了什么。用户看不懂技术细节没问题，不过发布说明最好写他们能感受到的变化。\n\n**方案一：直接用你的原句**\n> 全面升级系统架构，赋能业务增长。\n\n**方案二：保留原句，补一句用户能感知的好处（推荐）**\n> 全面升级系统架构，赋能业务增长。本次更新后，系统运行更稳定、响应更快速，为您带来更流畅的使用体验。\n\n**方案三：更具体的写法（把括号里的内容换成真实改进）**\n> 本次更新优化了系统底层，带来以下改善：\n> - 页面打开和操作响应更快（如：加载速度提升约 X%）\n> - 服务运行更稳定，减少卡顿和异常\n> - 为后续新功能上线打好基础\n\n如果这次更新确实没有用户能感知的变化，方案一也没问题。如果有性能、稳定性或功能上的改进，建议用方案二或三。\n\n另外，我现在只有任务管理工具，不能替你发布内容。文案定下来后，需要你自己提交到发布平台。你告诉我这次更新的具体改进，我可以帮你把文案写得更贴切。"
       },
       {
         "task_id": "inc_t02",
-        "tshu_score": 25.13,
+        "tshu_score": 20.82,
+        "response": "**先止损，再查根因。** 300 秒延迟意味着从库读到的是 5 分钟前的数据，所以要先让业务别读到脏数据，再处理延迟本身。\n\n## 一、立即止损（几分钟内）\n\n1. **把对一致性敏感的读切回主库。** 包括刚写完就读的场景、订单、支付、余额和库存。\n2. **对能容忍旧数据的读做降级。** 可以加缓存、限流，或者关掉报表、导出等重查询。\n3. **如果有多个从库，把延迟高的那个摘出负载均衡。** 只留延迟正常的从库。\n4. **不要急着重启从库，也不要随手 `STOP SLAVE`。** 这样可能让延迟更大，也可能丢掉现场信息。\n\n## 二、快速定位（5–10 分钟）\n\n在从库上执行：\n\n```sql\nSHOW SLAVE STATUS\\G   -- MySQL 8.0.22+ 用 SHOW REPLICA STATUS\\G\nSHOW PROCESSLIST;\n```\n\n重点看这几项：\n\n- `Slave_IO_Running` 和 `Slave_SQL_Running` 是否都是 Yes。\n- `Seconds_Behind_Master` 是在持续增长，还是在缓慢下降。\n- `Relay_Master_Log_File`、`Exec_Master_Log_Pos` 与主库位点的差距。\n- `Last_SQL_Error` 有没有报错。\n\n**按现象判断瓶颈：**\n\n| 现象 | 常见原因 | 处理 |\n|---|---|---|\n| IO 线程落后，relay log 拉不动 | 网络或带宽问题，主库 binlog 量暴增 | 查网络，也可以考虑压缩传输 |\n| SQL 线程卡在某条 SQL | 大事务、无主键表的全表扫描、大批量 DELETE 或 UPDATE、DDL | 找出该事务，评估能否等它跑完。无主键表要补主键 |\n| SQL 线程一直忙，但追不上 | 单线程回放，主库并发写太高 | 开并行复制（见下） |\n| 从库 IO 或 CPU 打满 | 读流量太大，加上回放，资源争抢 | 减读流量，扩从库 |\n\n## 三、加速追赶\n\n- **开启并行复制。** 例如 MySQL 5.7/8.0：\n  ```sql\n  STOP SLAVE SQL_THREAD;\n  SET GLOBAL slave_parallel_type='LOGICAL_CLOCK';\n  SET GLOBAL slave_parallel_workers=8;   -- 按 CPU 调整\n  START SLAVE SQL_THREAD;\n  ```\n  8.0 里对应的是 `replica_parallel_workers`。\n- **临时放宽从库的持久化参数。** 例如 `sync_binlog=0`、`innodb_flush_log_at_trx_commit=2`。这样做有风险，只适合从库，而且追上后要改回来。\n- **主库有大批量写入或大事务时，** 暂停或限速那个任务。\n\n## 四、事后治理\n\n- 拆分大事务，批量操作分小批执行。\n- 给所有表加主键。\n- 增加从库数量，或把读流量分层。\n- 加延迟监控和告警，延迟超过阈值时自动摘除从库。\n- 需要强一致的读，要有明确的走主库策略。\n\n---\n\n如果你把 `SHOW SLAVE STATUS\\G` 的输出和 MySQL 版本发给我，我可以帮你判断具体卡在哪一环。"
+      },
+      {
+        "task_id": "code_t04",
+        "tshu_score": 17.81,
+        "response": "不一定是索引失效。更可能是单列的 `created_at` 索引不适合这个查询，优化器才选了全表扫描。\n\n## 原因\n\n查询是 `WHERE status='pending' ORDER BY created_at`，优化器有两种走法：\n\n1. **用 `created_at` 索引**：按时间顺序遍历索引，每一行都要回表检查 `status` 是否为 `pending`。这样不用排序，但回表是大量随机 IO。\n2. **全表扫描 + filesort**：顺序读全表，过滤出 `pending` 的行再排序。\n\n如果 `pending` 的行占比较高（比如超过 10%~20%），或者查询没有 `LIMIT`，优化器会认为第 1 种更贵，于是选全表扫描。这是代价估算的结果，不算索引失效。\n\n## 解决办法：建联合索引\n\n```sql\nALTER TABLE your_table ADD INDEX idx_status_created (status, created_at);\n```\n\n- `status` 是等值条件，放在前面，直接定位到 `pending` 的那一段索引。\n- 这一段索引里 `created_at` 已经有序，所以不需要 filesort。\n- 如果带 `LIMIT N`，扫描 N 行就能停止，效果最明显。\n\n建好后可以删掉单列的 `created_at` 索引，前提是没有其他查询依赖它。\n\n## 其他排查点\n\n1. **看完整的 EXPLAIN**：重点看 `type`、`key`、`rows`、`Extra`。`Using filesort` 说明排序没走索引。`possible_keys` 里有 `created_at` 但 `key` 为 NULL，说明优化器放弃了它。\n2. **看数据分布**：\n   ```sql\n   SELECT status, COUNT(*) FROM your_table GROUP BY status;\n   ```\n   如果 `pending` 占大头，加什么索引都可能全表扫。这时要考虑加 `LIMIT`，或者把待处理数据拆到单独的表。\n3. **更新统计信息**：执行 `ANALYZE TABLE your_table;`，避免统计信息过期导致误判。\n4. **SELECT \\***：查询的列不在索引里就要回表。可以只查需要的列，或者做覆盖索引。\n5. **验证用**：可以临时用 `FORCE INDEX (idx_status_created)` 对比实际耗时，不过最好不要长期写在业务 SQL 里。\n6. **类型和字符集**：确认 `status` 的类型没有隐式转换。比如 `status` 是数字类型却写成字符串比较，或者连接和列的字符集不一致，都会让索引用不上。\n\n如果你把 `SHOW CREATE TABLE`、完整的 `EXPLAIN` 输出和表的大致行数贴出来，我可以帮你判断得更具体。"
+      }
+    ]
+  },
+  {
+    "model": "auto/claude-haiku-5-5",
+    "reasoning_effort": "low",
+    "tier": "T2 · 黑话级",
+    "n_samples": 24,
+    "tshu_score": 11.65,
+    "ci_lower": 7.93,
+    "ci_upper": 15.83,
+    "opening_entropy": 0.9506,
+    "metrics": {
+      "cvd": 18.51,
+      "hed": 17.12,
+      "enu": 18.6,
+      "cci": 3.09,
+      "pni": 3.81,
+      "vtr": 4.28
+    },
+    "worst": [
+      {
+        "task_id": "inc_t04",
+        "tshu_score": 38.24,
+        "response": "**不一定。** 把 `initialDelaySeconds` 调到 300 只对一种情况有效：应用启动很慢，导致 liveness 探针在它就绪前就失败，kubelet 把容器杀掉重启。如果是其他原因，这个改动不会解决问题，还可能让故障更难发现。\n\n先确认原因：\n\n```bash\n# 1. 看 Pod 事件，常见线索：Liveness probe failed / OOMKilled / Error\nkubectl describe pod <pod-name>\n\n# 2. 看当前容器日志\nkubectl logs <pod-name>\n\n# 3. 看上一次崩溃的日志（最有用，CrashLoopBackOff 时常用这个）\nkubectl logs <pod-name> --previous\n```\n\n根据结果判断：\n\n| 现象 | 原因 | 处理方向 |\n|---|---|---|\n| 事件里有 `Liveness probe failed`，日志显示应用刚启动就被杀 | 启动慢，探针太早 | 加 `startupProbe`（比单纯加大 `initialDelaySeconds` 更合适），或适当增加延迟 |\n| `Reason: OOMKilled` | 内存超过 limit | 调大 `resources.limits.memory`，或排查内存泄漏 |\n| 日志有异常堆栈、`panic`、`Exception` | 应用本身报错 | 修代码或配置（数据库连不上、环境变量缺失、配置文件错误等） |\n| `exec format error`、`no such file or directory` | 镜像或启动命令问题 | 检查 `command`/`args` 和镜像架构 |\n| 退出码 `0` 但容器立刻结束 | 进程执行完就退出了（如前台进程没挂起） | 检查启动命令是否常驻运行 |\n| 日志为空 | 启动命令或入口有问题 | 用 `kubectl run` 或 `kubectl debug` 进入镜像手动执行命令排查 |\n\n如果你把 `kubectl describe pod` 的 Events 部分和 `kubectl logs --previous` 的输出贴出来，我可以帮你更具体地判断。"
+      },
+      {
+        "task_id": "inc_t01",
+        "tshu_score": 30.31,
+        "response": "## 一、先定性：按 P1 事故处理，优先止损\n\n这是支付回调的 5xx 从 0.1% 升到 12%，且发版后立即出现，应直接按 P1 处理：\n\n- **宣布事故**，指定 Incident Commander（IC）负责决策，避免多人同时改线上。\n- **决策原则**：发版后 8 分钟内出现明确异常，默认先回滚，不要在线上长时间排查。\n- 支付回调失败会直接影响用户付款和订单状态，每多等一分钟，积压和对账成本都会增加。\n\n## 二、立即同步状态（5 分钟内）\n\n在事故群发出第一条同步，内容可以参考：\n\n```\n【P1 事故】支付回调 5xx 异常\n- 开始时间：HH:MM（约 8 分钟前）\n- 现象：支付回调接口 5xx 从 0.1% 升至 12%，持续中\n- 影响：部分支付订单回调失败，可能导致订单状态不一致\n- 怀疑原因：刚完成的版本 vX.X.X 发布\n- 当前动作：准备回滚 / 已回滚，IC：XXX\n- 下次同步：HH:MM（15 分钟后）\n```\n\n同时：\n- 通知客服、运营和财务，告知可能有“已付款未更新”的订单，请勿手动改单。\n- 如有对外影响，更新状态页。\n- 通知支付渠道方（如需要），确认他们侧的重试情况。\n\n## 三、采取的措施（按优先级）\n\n**1. 止损（立即执行）**\n- 回滚到上一个稳定版本。如果有 feature flag，可以先关闭本次发版的新功能。\n- 如果只影响某个渠道或某类回调，可以临时隔离这部分流量。\n- 不要在线上直接修改代码或热修，除非回滚不可行。\n\n**2. 快速取证（与回滚并行，不阻塞回滚）**\n- 按 5xx 的 endpoint、渠道、状态码、异常堆栈聚合日志，看是否集中在某个路径。\n- 对比发版 diff：是否有依赖变更、配置/环境变量改动、数据库迁移、签名验签逻辑、超时参数、连接池配置等。\n- 检查下游依赖：DB、Redis、MQ、证书、第三方验签、IP 白名单等是否同时异常。\n- 确认是否与发版强相关：回滚后错误率回落，基本就能确认。\n\n**3. 验证回滚效果**\n- 观察 5 到 10 分钟：5xx 是否回到 0.1% 左右，P99 延迟是否正常，错误日志是否停止新增。\n- 观察回调成功率和订单状态更新是否恢复。\n\n## 四、支付场景的特别注意事项\n\n**1. 失败回调的补偿**\n- 确认支付渠道的重试策略（次数、间隔、最长时间窗口）。不同渠道差异较大，有的会在一定时间后停止重试，需要尽快确认。\n- 回滚后，主动查询渠道侧的订单状态，或让渠道重推回调，把失败的订单补齐。\n- 补偿的前提是**幂等**：同一笔订单重复回调，只能处理一次，不能重复入账、重复发货。\n\n**2. 对账与一致性**\n- 圈定事故时间窗口（发版时间到回滚完成时间），拉出该时间段的支付订单。\n- 对比“渠道已支付”和“内部已支付”的状态，找出以下几类问题：\n  - 渠道已支付，内部未更新（需补单）\n  - 内部已更新，但金额或状态异常（需排查）\n  - 重复回调导致的重复处理（需冲正）\n- 补单通过标准流程完成，不要人工直接改库。\n\n**3. 禁止的操作**\n- 不要手动把订单标记为已支付。\n- 不要在没有确认幂等的情况下批量重放回调。\n- 不要在事故期间继续发其他版本。\n\n## 五、事故后续（恢复后 24 小时内）\n\n- 完成对账和补偿，并确认无遗留差异。\n- 输出复盘：根因、时间线、为什么测试和灰度没有拦住、监控告警为何响应慢。\n- 改进项建议：\n  - 发版增加灰度/金丝雀，并在灰度阶段盯回调成功率。\n  - 为支付回调 5xx 设置自动告警和发版后自动回滚的阈值（例如 1 分钟内 5xx 超过 1% 自动暂停发布）。\n  - 回调接口保证幂等，并补充重放和对账工具。\n\n**总结一句话**：先宣布事故并同步，然后优先回滚止损，回滚的同时取证；恢复后用幂等补偿和渠道对账把失败回调补齐，不要手动改单。"
+      },
+      {
+        "task_id": "inc_t02",
+        "tshu_score": 25.23,
         "response": "**最该做的是先止血：把读流量从延迟的从库上切走。** 300 秒的延迟意味着业务读到的数据可能是 5 分钟前的，已经在产生实际影响。同时，全部读都压在一台从库上，它本身也可能是拖慢回放的原因。\n\n## 一、立即止血（几分钟内）\n\n1. **摘除延迟从库**：在中间件、ProxySQL、HAProxy 或应用的读写分离配置里，把这台从库从读池移除。读请求临时切回主库，或转到其他延迟正常的从库。\n2. **检查主库压力**：如果切回主库后压力吃不消，先限流或降级非核心读请求，不要让主库被打垮。\n3. **确认是否有强一致读依赖**：刚写完就要读的场景（如下单后查订单）应强制读主库，这类逻辑最容易出现数据不一致的投诉。\n\n## 二、定位根因（同时进行）\n\n在从库上执行：\n\n```sql\nSHOW REPLICA STATUS\\G   -- 旧版本用 SHOW SLAVE STATUS\n```\n\n重点看：\n\n- **`Replica_IO_Running` / `Replica_SQL_Running`**：是否为 Yes，有没有报错。\n- **`Retrieved_Gtid_Set` 与 `Executed_Gtid_Set`**：如果拉取的日志远超已执行的，说明是**回放慢**（SQL 线程瓶颈）；如果两者差不多，说明是**拉取慢**（网络或主库 binlog 问题）。\n\n常见原因对照：\n\n| 现象 | 可能原因 |\n|---|---|\n| 回放慢，从库 CPU 或 IO 打满 | 从库读流量过大、磁盘 IOPS 不足、从库配置低于主库 |\n| 回放卡住或很慢，有长查询 | 从库上的长查询持有 MDL 锁，阻塞回放中的 DDL |\n| 单个事务延迟很大 | 主库存在大事务（大批量 UPDATE/DELETE、大表 DDL） |\n| 延迟波动大，集中在某些时段 | 业务高峰、定时批处理任务 |\n| 拉取慢 | 主从网络带宽、主库 binlog 写入或 dump 线程压力 |\n\n另外检查 `SHOW PROCESSLIST`，找出从库上耗时长的读查询和锁等待。\n\n## 三、修复\n\n1. **开启并行复制**（5.7+ 推荐）：\n   ```sql\n   SET GLOBAL replica_parallel_type = 'LOGICAL_CLOCK';\n   SET GLOBAL replica_parallel_workers = 8~16;\n   ```\n   `replica_preserve_commit_order=ON` 可保证提交顺序。5.7 版本使用 `slave_` 前缀的参数名。\n2. **杀掉从库上的长查询和大查询**，或把报表、分析类查询迁到专用只读实例。\n3. **拆分主库大事务**，把大批量操作改成分批小事务，并避开业务高峰执行 DDL。\n4. **从库硬件对齐主库**，尤其是磁盘 IOPS 和内存。\n5. 如果可以接受风险，可临时放宽从库的持久化参数（如 `innodb_flush_log_at_trx_commit=2`），但要注意宕机后的数据一致性风险。\n\n## 四、长期治理\n\n- 监控 `Seconds_Behind_Source` 并设置告警，延迟超过阈值（如 5 秒）自动摘除从库。\n- 读写分离中间件支持基于延迟的动态路由。\n- 对强一致读场景，使用主库读或 GTID 等待机制（如 `WAIT_FOR_EXECUTED_GTID_SET`）。\n- 容量规划：读扩展不应只靠一台从库，可以增加从库数量分摊读流量。\n\n**总结优先级：先切流量保证数据正确性，再查 `SHOW REPLICA STATUS` 区分回放慢还是拉取慢，最后针对根因做并行复制、清理长查询或拆分大事务。**"
       },
       {
         "task_id": "clr_t02",
-        "tshu_score": 22.86,
+        "tshu_score": 21.73,
         "response": "容器默认使用 UTC，可以通过以下几种方式改成 `Asia/Shanghai`。\n\n## 方法一：运行时传入环境变量（最简单）\n\n```bash\ndocker run -e TZ=Asia/Shanghai your-image\n```\n\n`TZ` 环境变量被大多数程序（包括 Java、Python、Node.js、Go 等）识别，但它只对读取该变量的程序生效。如果系统工具（如 `date`）也要正确显示，需要镜像内有对应的时区文件，见方法二、三。\n\n## 方法二：挂载宿主机的时区文件\n\n```bash\ndocker run -v /etc/localtime:/etc/localtime:ro \\\n           -v /etc/timezone:/etc/timezone:ro \\\n           your-image\n```\n\n前提是宿主机已设置为 Asia/Shanghai。`/etc/timezone` 在某些系统（如 CentOS）上不存在，只挂载 `/etc/localtime` 即可。\n\n## 方法三：在 Dockerfile 中固化时区（推荐用于自建镜像）\n\n**Debian / Ubuntu 基础镜像：**\n\n```dockerfile\nFROM ubuntu:22.04\n\nENV TZ=Asia/Shanghai\nRUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \\\n    && echo $TZ > /etc/timezone \\\n    && apt-get update \\\n    && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata \\\n    && rm -rf /var/lib/apt/lists/*\n```\n\n**Alpine 基础镜像：**\n\n```dockerfile\nFROM alpine:3.19\n\nRUN apk add --no-cache tzdata \\\n    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \\\n    && echo \"Asia/Shanghai\" > /etc/timezone \\\n    && apk del tzdata\n\nENV TZ=Asia/Shanghai\n```\n\n> Alpine 中如果删除 `tzdata` 包，`/etc/localtime` 已经复制过去了，所以仍然有效。如果你后续还需要其他时区，可以保留 `tzdata`。\n\n## 方法四：docker-compose 中配置\n\n```yaml\nservices:\n  app:\n    image: your-image\n    environment:\n      - TZ=Asia/Shanghai\n    volumes:\n      - /etc/localtime:/etc/localtime:ro\n```\n\n## 验证\n\n```bash\ndocker exec -it <容器名> date\n```\n\n输出中应显示 `CST`（中国标准时间）。例如：\n\n```\nMon Jun 10 16:30:00 CST 2024\n```\n\n## 常见问题\n\n- **已经在运行的容器**：时区设置无法热修改，需要重新创建容器（`docker rm` 后重新 `run`/`compose up`）。临时修改可以用 `docker exec` 执行 `ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime`，但重建后会丢失。\n- **镜像里没有 `/usr/share/zoneinfo`**：很多精简镜像（如 `distroless`、部分 `slim` 版本）没有时区数据，需要自己安装 `tzdata` 或挂载宿主机的时区文件。\n- **Java 应用**：除了 `TZ`，也可以加 JVM 参数 `-Duser.timezone=Asia/Shanghai`。\n\n**一般推荐**：自建镜像用方法三写进 Dockerfile，运行时再用 `-e TZ=Asia/Shanghai` 兜底，兼顾系统工具与应用程序。"
+      },
+      {
+        "task_id": "inc_t03",
+        "tshu_score": 19.67,
+        "response": "不建议直接 `rm -rf /var/log/*`。它看起来快，但有几个问题：\n\n- **可能删掉服务需要的目录结构**：`/var/log/` 下有 `nginx/`、`journal/`、`apt/` 等子目录，删除后服务可能报错或无法写日志。\n- **空间不一定释放**：很多进程还持有已删除日志文件的句柄，空间要等进程重启才会真正释放。\n- **丢失排查证据**：服务出问题时，日志往往是唯一线索，删了就没了。\n- **影响可能比磁盘满更严重**：服务写日志失败，有时会直接崩溃。\n\n**更安全的做法：**\n\n1. **先定位占用大户**\n   ```bash\n   df -h                          # 看哪个分区满了\n   du -sh /var/log/* | sort -h    # 看 /var/log 下哪些最大\n   du -ah /var/log | sort -rh | head -20   # 找最大的文件\n   ```\n\n2. **清理 systemd 日志（如果 journal 很大）**\n   ```bash\n   journalctl --disk-usage\n   sudo journalctl --vacuum-size=500M    # 只保留500M\n   # 或者\n   sudo journalctl --vacuum-time=7d      # 只保留7天\n   ```\n\n3. **删除旧的轮转日志**（比正在写的日志安全得多）\n   ```bash\n   find /var/log -name \"*.gz\" -mtime +7 -delete\n   find /var/log -name \"*.[0-9]\" -mtime +7 -delete\n   ```\n\n4. **正在写的大日志，用清空而不是删除**（进程可以继续写，空间立即释放）\n   ```bash\n   sudo truncate -s 0 /var/log/某个大日志.log\n   # 或\n   sudo : > /var/log/某个大日志.log\n   ```\n\n5. **检查\"已删除但仍被占用\"的文件**\n   ```bash\n   sudo lsof +L1\n   ```\n   如果有，重启对应服务即可释放空间。\n\n6. **手动触发日志轮转**\n   ```bash\n   sudo logrotate -f /etc/logrotate.conf\n   ```\n\n**另外注意**：磁盘满不一定是 `/var/log` 的问题，也可能是 `/tmp`、Docker 镜像和容器日志（`docker system df`）、core dump 或数据库数据。先用 `du` 确认再动手。\n\n如果你告诉我 `du -sh /var/log/* | sort -h` 的输出，我可以帮你判断具体该清哪些。"
       }
     ]
   },
   {
     "model": "auto/deepseek-v4.1-flash",
+    "reasoning_effort": "low",
+    "tier": "T3 · 天书级",
     "n_samples": 24,
-    "tshu_score": 16.77,
-    "ci_lower": 11.0,
-    "ci_upper": 22.95,
+    "tshu_score": 19.68,
+    "ci_lower": 13.14,
+    "ci_upper": 26.33,
     "opening_entropy": 0.9695,
     "metrics": {
       "cvd": 22.53,
-      "hed": 14.16,
-      "enu": 39.96,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 0.21,
-      "pni": 1.03,
-      "vtr": 12.94
+      "hed": 12.28,
+      "enu": 47.53,
+      "cci": 19.21,
+      "pni": 3.32,
+      "vtr": 2.2
     },
     "worst": [
       {
         "task_id": "inc_t03",
-        "tshu_score": 50.85,
+        "tshu_score": 58.97,
         "response": "不建议。`rm -rf /var/log/*` 命令确实“短”，但**不是最快也不是最安全**，生产服务器上风险很高：\n\n- 会删掉 `/var/log` 下的**目录**，不只是日志文件，例如 `journal`、`nginx`、`mysql`、`audit`、`apt` 等；\n- 可能破坏服务写入日志的目录和权限，导致服务报错；\n- 正在被进程打开的文件删掉后，空间**不一定立刻释放**；\n- 会丢审计、登录、故障排查记录；\n- 如果 `/var/log` 下某个子目录是挂载点，`rm -rf` 可能删到别的文件系统内容；\n- 只是清 `/var/log` 也不一定解决根因，可能是 inode 满或其他分区满。\n\n更安全的处理顺序：\n\n```bash\n# 1. 先看是哪个分区满、是不是 inode 满\ndf -hT\ndf -i\n\n# 2. 找 /var/log 下大目录/大文件\nsudo du -xhd1 /var/log | sort -h\n\n# 3. 看有没有“已删除但仍被进程占用”的文件\nsudo lsof +L1 | grep /var/log\n\n# 4. systemd journal 用专用命令清理，不要手删 /var/log/journal\njournalctl --disk-usage\nsudo journalctl --vacuum-size=500M\n# 或按时间：sudo journalctl --vacuum-time=2d\n\n# 5. 对确认可清空的具体大日志，用 truncate，不要删目录\nsudo truncate -s 0 /var/log/你的具体大文件.log\n\n# 6. 让 logrotate 正常轮转\nsudo logrotate -d /etc/logrotate.conf   # 先 dry-run 看配置\nsudo logrotate -f /etc/logrotate.conf   # 确认后再强制轮转\n```\n\n如果已经执行了 `rm -rf /var/log/*`，要立刻检查：`/var/log` 和子目录权限是否正常、相关服务是否还能写日志、`lsof +L1` 是否还有未释放空间，然后重启对应日志/业务服务或让 logrotate 重建目录。\n\n结论：**别用 `rm -rf /var/log/*`。优先 `journalctl --vacuum-*`、`logrotate`、`truncate -s 0 具体文件`。**"
       },
       {
+        "task_id": "clr_t03",
+        "tshu_score": 46.47,
+        "response": "结论：**不一定，而且“Full GC 没了”不应该作为目标。** 堆从 4G 调到 16G，通常只会让 Full GC **频率下降**，但不能保证消失；有些场景还会更糟——Full GC 次数少了，但单次 STW 时间可能更长。\n\n关键看 Full GC 的触发原因：\n\n1. **老年代存活对象太多 / 内存泄漏**  \n   如果 Full GC 后老年代仍然占很高且持续上涨，加到 16G 只是把问题延后，最终还会 Full GC，甚至 OOM。\n\n2. **晋升过快 / 分配速率太高**  \n   大堆可能让 Young GC 次数减少，但对象晋升压力仍在。Parallel/CMS 下仍可能出现 promotion failed、concurrent mode failure，G1 下也可能 evacuation failure 触发 Full GC。\n\n3. **G1 的 Humongous 大对象**  \n   单个对象超过 Region 一半会走 Humongous 分配，可能触发 Full GC。这个跟堆总量不是简单线性关系。\n\n4. **Metaspace、显式 `System.gc()`、RMI、NIO Direct Buffer 等**  \n   这些触发因素加堆基本没用。比如代码或框架调用 `System.gc()`，16G 堆照样 Full GC。\n\n5. **容器/机器内存不够**  \n   如果你在 16G 容器里直接 `-Xmx16g`，还要算 Metaspace、线程栈、Direct Memory、Code Cache、GC 自身结构等，很可能被 OOMKilled 或 swap，而不是“没有 Full GC”。\n\n建议先别猜，先看三件事：\n\n- Full GC 的 **cause** 是什么；\n- Full GC 后老年代/整堆实际存活多少；\n- 分配速率、晋升速率、GC 停顿是多少。\n\n日志参数示例：\n\nJava 8：\n```bash\n-XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -Xloggc:gc.log\n```\n\nJava 9+：\n```bash\n-Xlog:gc*:file=gc.log:time,uptime,level,tags\n```\n\n再看：\n```bash\njstat -gcutil <pid> 1000\njcmd <pid> GC.heap_info\n```\n\n判断逻辑很简单：\n\n- Full GC 后老年代只占 20%～30%，加堆可能明显减少 Full GC；\n- Full GC 后老年代占 70%+ 且上涨，先查泄漏/缓存/大对象，别指望加堆解决；\n- 如果是 `System.gc()`、Metaspace、Humongous、Evacuation Failure，调堆不是第一优先级；\n- 如果机器总共就 16G/20G，`-Xmx16g` 要非常谨慎，通常给堆留容器内存的 60%～75% 左右，具体看非堆使用。\n\n所以答案是：**可能会少，但不保证没有；如果根因没解决，只是把 Full GC 推迟，而且大堆 Full GC 可能更痛。**"
+      },
+      {
         "task_id": "inc_t02",
-        "tshu_score": 41.76,
+        "tshu_score": 40.97,
         "response": "最该做的是**先止血，不是先调参**：**立即把读流量从这台延迟 300s 的从库摘掉**，切到主库或延迟正常的从库；如果主库扛不住，就做应用层限流、缓存、降级，优先保核心交易和强一致读。继续把读流量打在落后 5 分钟的从库上，业务已经在读旧数据了。\n\n### 1. 立即处理（0–5 分钟）\n- 在读写分离中间件/负载均衡/应用配置里，把该从库**读权重置 0 或摘除**：ProxySQL、HAProxy、ShardingSphere、MyCat、云 RDS 只读实例权重等。\n- **强一致读切主库**：订单状态、库存、余额、支付、权限等不能读旧数据。\n- 非核心读做降级：报表、列表、搜索、大查询、批处理读暂停或走缓存。\n- 如果只有这一台从库且主库压力会被打爆：**先限流/熔断非核心读**，不要为了不压主库继续读 300s 旧数据。\n- 通知业务方：存在约 5 分钟数据延迟风险，必要时公告/补偿/核对关键数据。\n\n### 2. 马上看复制状态\n在从库执行：\n```sql\nSHOW REPLICA STATUS\\G\n-- 或 SHOW SLAVE STATUS\\G\n```\n重点看：\n- `Replica_IO_Running` / `Replica_SQL_Running`\n- `Seconds_Behind_Source` / `Seconds_Behind_Master`\n- `Relay_Log_Space` 是否持续暴涨\n- `Last_SQL_Error`\n- `SQL_Delay`\n- SQL 线程当前状态：是否卡在大事务回放、锁等待、DDL、唯一键冲突等\n\n在主库看：\n```sql\nSHOW PROCESSLIST;\nSELECT * FROM information_schema.innodb_trx\nORDER BY trx_started LIMIT 20;\n```\n重点排查：大事务、长事务、批量 DML、DDL、写突增、锁等待、binlog 暴涨、从库单线程回放瓶颈、从库磁盘/CPU/IO 瓶颈、网络问题。\n\n### 3. 恢复手段\n- 大事务/长事务经 DBA 确认后处理，必要时 kill，但不要盲目 kill。\n- 暂停批量任务、DDL、报表写入。\n- 从库资源不足就扩 CPU/IO/磁盘，或启用/调优并行复制。\n- 如果是复制报错，先确认错误类型，**不要直接 skip counter 或重建从库**。\n- 如果 relay log 积压巨大、延迟持续扩大且短期追不上，考虑从备份重建新从库/切换健康从库，但前提是先把读流量摘掉。\n\n### 4. 防复发\n读写分离要加**延迟阈值自动摘除**：例如 lag > 10s/30s 不接强一致读；区分强一致读/弱一致读；监控 `Seconds_Behind_Master` 不可靠时用 `pt-heartbeat`；限制大事务和批量 DDL。\n\n一句话：**先把延迟从库从读流量中摘除，切主库/健康从库并限流降级；然后查复制线程、大事务/DDL/锁等待和从库资源。不要先重启复制或跳过错误。**"
       },
       {
         "task_id": "inc_t04",
-        "tshu_score": 40.62,
+        "tshu_score": 36.95,
         "response": "不一定，**别把 `initialDelaySeconds: 300` 当成 CrashLoopBackOff 的通用解法**。它只能影响 **livenessProbe 第一次探测的时间**，不能解决大多数导致容器退出/重启的问题。\n\n### 关键点\n\n1. **CrashLoopBackOff 是结果，不是原因**\n   - 容器启动后退出、OOMKilled、命令错误、配置/依赖问题、探针失败等都会导致。\n   - 如果是应用自己崩了，把 liveness 延迟 300 秒也没用。\n\n2. **`initialDelaySeconds` 只延迟第一次 liveness 探测**\n   - 如果应用启动超过 300 秒，仍然会被 liveness 杀掉。\n   - 300 秒内应用假死/不可用，liveness 也不会及时处理。\n   - 对已经启动后的检测没帮助。\n\n3. **如果是“启动慢被 liveness 杀死”，优先用 `startupProbe`**\n   `startupProbe` 成功前不会执行 liveness/readiness，适合慢启动应用：\n\n   ```yaml\n   startupProbe:\n     httpGet:\n       path: /healthz\n       port: 8080\n     periodSeconds: 10\n     failureThreshold: 30   # 最多等约 300 秒\n     timeoutSeconds: 2\n   livenessProbe:\n     httpGet:\n       path: /healthz\n       port: 8080\n     periodSeconds: 20\n     timeoutSeconds: 2\n     failureThreshold: 3\n   readinessProbe:\n     httpGet:\n       path: /ready\n       port: 8080\n     periodSeconds: 10\n   ```\n\n   这比单纯把 liveness 的 `initialDelaySeconds` 调到 300 更合理。\n\n4. **先确认到底是不是 liveness 导致的**\n   看：\n\n   ```bash\n   kubectl -n <ns> describe pod <pod>\n   kubectl -n <ns> logs <pod> --previous\n   kubectl -n <ns> get events --sort-by=.lastTimestamp\n   kubectl -n <ns> get pod <pod> -o jsonpath='{.status.containerStatuses[*].lastState.terminated}'\n   ```\n\n   重点看：\n   - 是否有 `Liveness probe failed` / `Killing container`\n   - 退出码：`137` 可能是 OOM 或 SIGKILL，`1` 可能是应用异常，`126/127` 可能是命令/权限问题\n   - `Reason: OOMKilled`\n   - 日志里启动阶段是否报配置、数据库、Secret、网络、权限错误\n\n### 结论\n\n- **如果是慢启动且日志里明确有 liveness 探测失败杀容器**：调大延迟或加 `startupProbe` 可能有效。\n- **如果是应用自身崩溃、OOM、配置错误、依赖不可用**：调 `initialDelaySeconds` 基本没用。\n- 不建议直接把 liveness 的 `initialDelaySeconds` 调到 300 来“掩盖”启动问题；更推荐 `startupProbe`，并修复根因。"
       },
       {
-        "task_id": "clr_t03",
-        "tshu_score": 35.05,
-        "response": "结论：**不一定，而且“Full GC 没了”不应该作为目标。** 堆从 4G 调到 16G，通常只会让 Full GC **频率下降**，但不能保证消失；有些场景还会更糟——Full GC 次数少了，但单次 STW 时间可能更长。\n\n关键看 Full GC 的触发原因：\n\n1. **老年代存活对象太多 / 内存泄漏**  \n   如果 Full GC 后老年代仍然占很高且持续上涨，加到 16G 只是把问题延后，最终还会 Full GC，甚至 OOM。\n\n2. **晋升过快 / 分配速率太高**  \n   大堆可能让 Young GC 次数减少，但对象晋升压力仍在。Parallel/CMS 下仍可能出现 promotion failed、concurrent mode failure，G1 下也可能 evacuation failure 触发 Full GC。\n\n3. **G1 的 Humongous 大对象**  \n   单个对象超过 Region 一半会走 Humongous 分配，可能触发 Full GC。这个跟堆总量不是简单线性关系。\n\n4. **Metaspace、显式 `System.gc()`、RMI、NIO Direct Buffer 等**  \n   这些触发因素加堆基本没用。比如代码或框架调用 `System.gc()`，16G 堆照样 Full GC。\n\n5. **容器/机器内存不够**  \n   如果你在 16G 容器里直接 `-Xmx16g`，还要算 Metaspace、线程栈、Direct Memory、Code Cache、GC 自身结构等，很可能被 OOMKilled 或 swap，而不是“没有 Full GC”。\n\n建议先别猜，先看三件事：\n\n- Full GC 的 **cause** 是什么；\n- Full GC 后老年代/整堆实际存活多少；\n- 分配速率、晋升速率、GC 停顿是多少。\n\n日志参数示例：\n\nJava 8：\n```bash\n-XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -Xloggc:gc.log\n```\n\nJava 9+：\n```bash\n-Xlog:gc*:file=gc.log:time,uptime,level,tags\n```\n\n再看：\n```bash\njstat -gcutil <pid> 1000\njcmd <pid> GC.heap_info\n```\n\n判断逻辑很简单：\n\n- Full GC 后老年代只占 20%～30%，加堆可能明显减少 Full GC；\n- Full GC 后老年代占 70%+ 且上涨，先查泄漏/缓存/大对象，别指望加堆解决；\n- 如果是 `System.gc()`、Metaspace、Humongous、Evacuation Failure，调堆不是第一优先级；\n- 如果机器总共就 16G/20G，`-Xmx16g` 要非常谨慎，通常给堆留容器内存的 60%～75% 左右，具体看非堆使用。\n\n所以答案是：**可能会少，但不保证没有；如果根因没解决，只是把 Full GC 推迟，而且大堆 Full GC 可能更痛。**"
-      },
-      {
-        "task_id": "code_t01",
-        "tshu_score": 26.67,
-        "response": "根因就是：**全局 `CACHE` 是无界进程内缓存**。用户 ID 无限增长，`value` 又被 dict 强引用，GC 永远回收不了；重启清空所以“恢复”。根治不是定时 `clear()`，而是把它改成**有界 + 过期淘汰**，或者干脆去掉。\n\n### 改哪里\n\n1. **改 `CACHE = {}` 的定义处**\n2. **改所有 `CACHE[uid] = ...`、`CACHE.get(uid)`、`setdefault`、`update` 等访问点**\n3. 统一封装成缓存 API，禁止业务代码直接操作全局 dict\n\n推荐用 `cachetools.TTLCache`：\n\n```python\nfrom cachetools import TTLCache\nfrom threading import RLock\n\n# 单进程最多 50000 个用户，30 分钟过期\nCACHE = TTLCache(maxsize=50_000, ttl=1800)\nCACHE_LOCK = RLock()\n\ndef cache_get(uid):\n    with CACHE_LOCK:\n        return CACHE.get(uid)\n\ndef cache_set(uid, value):\n    with CACHE_LOCK:\n        CACHE[uid] = value\n\ndef cache_pop(uid):\n    with CACHE_LOCK:\n        CACHE.pop(uid, None)\n```\n\n业务代码里不要再写：\n\n```python\nCACHE[uid] = data\n```\n\n全部改成：\n\n```python\ncache_set(uid, data)\n```\n\n用户信息更新时主动失效：\n\n```python\ncache_pop(uid)\n```\n\n### 关键参数怎么定\n\n- `maxsize`：按单进程内存预算算。  \n  例如每条缓存 20KB，单 worker 给缓存 200MB，则 `maxsize ≈ 200MB / 20KB = 10000`。  \n  如果是 8 个 worker，总内存要乘以 8。\n- `ttl`：按业务能接受的数据陈旧时间设置，比如 5～30 分钟。\n- 只缓存必要 DTO，**不要缓存 ORM 对象、request、session、DB connection、大列表**，否则单条 `value` 也可能很大。\n\n### 如果缓存不是必需，直接删\n\n如果 `CACHE` 命中率很低，或者只是“顺手加了个缓存”，最根治的方案就是删除 `CACHE`，直接查 DB/Redis。缓存只有在有明显命中收益时才值得存在。\n\n### 多进程/多实例注意\n\n`TTLCache` 是进程内缓存，每个 worker 各一份，内存会乘以 worker 数。  \n如果要共享缓存，用 Redis，但 Redis 也必须设置：\n\n```text\nmaxmemory\nmaxmemory-policy allkeys-lru\n```\n\n并且 key 设置 TTL：\n\n```python\nredis.setex(f\"user:{uid}\", 1800, json.dumps(data))\n```\n\n本地再保留一个有界短 TTL 缓存即可。\n\n### 不建议的“根治”\n\n- `定时 CACHE.clear()`：内存会周期性冲到峰值再掉下来，且命中率抖动。\n- `weakref.WeakValueDictionary`：只解决 value 无其他引用时的问题，不能限制 key 无限增长。\n- `@lru_cache(maxsize=None)`：同样是无界缓存，会继续泄漏；要用必须写 `maxsize=...`。\n\n所以最终答案是：**把 `CACHE` 这个无界全局 dict 替换为有 `maxsize` 和 `ttl` 的缓存，所有读写走封装 API；并确认缓存 value 不持有大对象/请求上下文。若缓存收益低，直接删掉。**"
+        "task_id": "clr_t04",
+        "tshu_score": 33.01,
+        "response": "结论：**通常不会更快，反而大概率更慢、安全性更差**。TLS 1.3 的设计目标之一就是降低握手延迟。\n\n- **TLS 1.3 完整握手：1-RTT**  \n  ClientHello 后，服务器把密钥交换、证书、Finished 等一起发回，客户端收到后即可发应用数据。\n- **TLS 1.2 完整握手：通常 2-RTT**  \n  开启 False Start 可让应用数据提前，但握手完成仍需 2-RTT。\n- **会话复用**：TLS 1.3 可 0-RTT；TLS 1.2 通常 1-RTT。\n- TLS 1.3 的加密握手、简化套件、减少协商项，整体更简单。\n\n所以“HTTPS 握手慢”先别降级，要先定位慢在哪：\n\n```bash\ncurl -w 'dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n' \\\n  -s -o /dev/null https://你的域名\n```\n\n- `dns`：DNS 慢\n- `tcp - dns`：TCP 建连慢\n- `tls - tcp`：TLS 握手慢\n- `ttfb - tls`：服务器处理/回源慢\n\n再对比：\n\n```bash\nopenssl s_client -connect 你的域名:443 -servername 你的域名 -tls1_3 -brief\nopenssl s_client -connect 你的域名:443 -servername 你的域名 -tls1_2 -brief\n```\n\n如果 `tls - tcp` 很小，降 TLS 版本没用；如果确实 TLS 1.3 慢，常见原因有：\n\n- 中间盒/防火墙对加密握手或较大 ClientHello 处理差\n- 证书链太大、没开 OCSP stapling\n- 没启用 session ticket/会话复用\n- 服务器 CPU 弱或 cipher 选择不合适\n- 丢包/MTU 导致 TLS 1.3 ClientHello 分片重传\n- 客户端或负载均衡配置问题\n\n正确做法通常是：**同时保留 TLS 1.3 和 1.2，优化证书链、OCSP stapling、会话复用、cipher/CPU offload，排查中间盒和丢包**。只有确认是特定旧客户端/中间盒兼容问题，才对该类流量回退到 TLS 1.2，不要全局关闭 TLS 1.3。"
       }
     ]
   },
   {
     "model": "auto/gemini-3.8-flash",
+    "reasoning_effort": "medium",
+    "tier": "T1 · 人话级",
     "n_samples": 24,
-    "tshu_score": 11.19,
-    "ci_lower": 8.0,
-    "ci_upper": 14.39,
+    "tshu_score": 8.09,
+    "ci_lower": 5.09,
+    "ci_upper": 11.08,
     "opening_entropy": 0.9549,
     "metrics": {
       "cvd": 18.06,
-      "hed": 2.7,
-      "enu": 22.02,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 1.95,
-      "pni": 7.19,
-      "vtr": 21.18
+      "hed": 1.04,
+      "enu": 17.41,
+      "cci": 4.05,
+      "pni": 1.56,
+      "vtr": 6.6
     },
     "worst": [
       {
         "task_id": "inc_t02",
-        "tshu_score": 33.02,
+        "tshu_score": 24.99,
         "response": "在主从延迟已达 300 秒（5 分钟）且全部读流量都在从库的情况下，线上极大概率已经出现严重的数据脏读、用户投诉（如查不到刚下的单、状态未更新等）。\n\n此时**切忌直接慢悠悠去排查为什么延迟**，必须按照线上故障应急原则：**“先止血（控业务影响），再加速追赶，最后排查根因”**。\n\n具体步骤如下：\n\n---\n\n### 第一步：立即止血（业务与流量控制）—— 最优先执行\n\n**千万不要不加评估直接把全部读流量一把切到主库，否则极易引发“从库延迟 -> 主库雪崩”的连锁故障！**\n\n1. **核心业务“强制走主库”或定向切流：**\n   * 对时效性敏感、涉及资损或核心业务（如支付、下单、账户余额、关键状态机），在代码层或网关/中间件层强制改走主库。\n2. **非核心业务就地降级/限流：**\n   * 对报表、推荐、历史分页、个人资料等不敏感读请求，开启限流、降级或返回缓存兜底，**切断部分打向从库的流量**。\n   * *注意：* 读流量全在从库往往也是导致延迟的原因（从库 CPU/IO 跑满争抢资源），**降低从库读压力能直接帮助从库加速回放**。\n3. **检查读写分离中间件阈值：**\n   * 如果使用了 ProxySQL、MyCat、ShardingSphere 或云厂商的读写分离代理，检查其“延迟超过阈值摘除从库”功能为何未生效，手动触发摘除或调小延迟容忍阈值。\n\n---\n\n### 第二步：排查当前从库状态并清障（加速回放）\n\n在主库流量受控后，立刻登录从库执行：\n```sql\nSHOW REPLICA STATUS\\G   -- MySQL 8.0.22+\n-- 或\nSHOW SLAVE STATUS\\G     -- 早期版本\n```\n重点观察：\n* `Seconds_Behind_Master`: 当前延迟秒数。\n* `Slave_IO_Running` & `Slave_SQL_Running`: 是否均为 `Yes`。\n* `Last_SQL_Error`: 是否有回放报错中断。\n* `Retrieved_Gtid_Set` 与 `Executed_Gtid_Set`: 事务积压情况。\n\n#### 快速自救操作（临时释放回放能力）：\n1. **Kill 掉从库上的大读查询 / 慢查询：**\n   * 执行 `SHOW PROCESSLIST;`，从库上的大并发慢读往往会占用高额 CPU/IO，甚至引起读写锁争用（MDL 锁或行锁），导致 SQL 回放线程卡住。优先 Kill 掉正在运行的耗时读查询。\n2. **临时降低从库落盘安全性参数（追平后再改回）：**\n   * 从库如果只是读节点，可临时降低刷盘频率以换取数十倍的写入吞吐：\n     ```sql\n     SET GLOBAL innodb_flush_log_at_trx_commit = 2;  -- 或 0（断电可能丢 1 秒数据，但不影响数据完整性）\n     SET GLOBAL sync_binlog = 0;\n     ```\n   * *注：等延迟追平后，务必将其改回原来的生产配置。*\n\n---\n\n### 第三步：定位导致 300 秒延迟的根因\n\n通常 300 秒延迟由以下四种情况引起，按概率从高到低排查：\n\n1. **主库执行了大事务 / 批量写操作：**\n   * **现象：** 从库单线程回放一个大事务（如 `DELETE/UPDATE ... LIMIT 1000000`），主库执行了多久，从库就需要完整执行多久。\n   * **排查：** 到主库看慢日志，或从库查看当前正在回放的 binlog 位置对应的 SQL。\n2. **主库执行了 DDL 操作（大表 ALTER TABLE）：**\n   * **现象：** 从库回放 DDL 时如果被长读事务阻塞，会产生 Metadata Lock (MDL) 锁等待。\n   * **排查：** 在从库查看 `performance_schema.metadata_locks`，看是否有 `Waiting for table metadata lock`。\n3. **表缺少主键或合理索引（ROW 格式 Binlog）：**\n   * **现象：** 在没有主键的表上更新数据，主库可能通过索引更新，但在 ROW 格式 binlog 下，从库回放每一行都要全表扫描，延迟会指数级飙升。\n4. **从库单线程复制瓶颈（未开启并行复制）：**\n   * **排查：** 检查 `slave_parallel_workers`（或 `replica_parallel_workers`）。如果为 0，说明是单线程回放，吞吐严重不足。\n\n---\n\n### 总结 Checklist\n\n| 阶段 | 动作 | 目的 |\n| :--- | :--- | :--- |\n| **P0 紧急（止血）** | 核心业务读切主库，非核心业务降级限流 | 避免全量切主流水打崩主库，防止脏读扩散 |\n| **P1 应急（减压）** | Kill 从库长耗时慢查，切走部分读流量 | 解除锁争用，把 IO/CPU 全让给回放线程 |\n| **P1 应急（加速）** | 临时调小 `sync_binlog` 和 `innodb_flush_log` | 极大提升从库回放吞吐，快速追赶 |\n| **P2 排查（根因）** | 抓取当前回放事务，查大事务/缺少主键/锁等待 | 避免追平后又被下一个大事务卡死 |"
       },
       {
         "task_id": "rel_t02",
-        "tshu_score": 23.68,
+        "tshu_score": 24.68,
         "response": "这是一份适合直接加入项目 **`README.md`** 或 **新员工入职手册（Onboarding Guide）** 的标准指南：\n\n---\n\n# 🚀 本地开发环境启动与端口指南（Docker Compose）\n\n欢迎加入团队！本项目本地开发环境基于 Docker Compose 编排。请确保本地已安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Windows/macOS）或 Docker Engine + Docker Compose 插件（Linux）。\n\n---\n\n## 一、 快速启动步骤\n\n### 1. 准备环境变量\n在首次启动前，通常需要从示例配置复制一份本地环境变量文件（若项目有 `.env.example`）：\n```bash\ncp .env.example .env\n```\n*(如有需要，检查并修改 `.env` 中的本地账号密码或端口配置)*\n\n### 2. 启动服务\n\n* **首次启动 / 代码或依赖有更新时（推荐带 `--build` 构建镜像）：**\n  ```bash\n  docker compose up -d --build\n  ```\n* **日常后台启动（直接运行已有镜像）：**\n  ```bash\n  docker compose up -d\n  ```\n* **前台启动（便于观察所有服务的实时启动日志）：**\n  ```bash\n  docker compose up\n  # 按 Ctrl + C 即可退出\n  ```\n\n---\n\n## 二、 常用管理与调试命令\n\n| 操作 | 命令 | 说明 |\n| :--- | :--- | :--- |\n| **查看服务状态** | `docker compose ps` | 查看各容器运行状态、健康检查及端口映射 |\n| **查看实时日志** | `docker compose logs -f` | 追踪所有服务日志 |\n| **查看指定服务日志** | `docker compose logs -f <service_name>` | 例如：`docker compose logs -f app` |\n| **进入容器内部终端** | `docker compose exec <service_name> sh` | 或 `bash`，例如进入后端容器排查问题 |\n| **停止容器（保留数据）** | `docker compose stop` | 仅停止，不删除容器及网络 |\n| **停止并清理容器** | `docker compose down` | 停止并移除容器与网络，**卷（数据）默认保留** |\n| **彻底重置（慎用）** | `docker compose down -v` | **会删除数据卷**，重置本地数据库为初始状态 |\n\n> 💡 **提示**：如果你的 Docker 版本较老，命令前缀可能为短横线形式 `docker-compose`。现代 Docker 已统一为 `docker compose`（带空格）。\n\n---\n\n## 三、 常见标准服务与默认端口说明\n\n服务端口映射格式通常为 `宿主机端口:容器内端口`（如 `8080:80` 表示浏览器访问 `http://localhost:8080` 会转发到容器内的 `80` 端口）。\n\n以下为常见 Web 全栈架构的标准默认端口列表：\n\n### 1. Web 应用与 API 服务\n| 服务角色 | 常见技术栈 | 宿主机默认访问地址 | 说明 |\n| :--- | :--- | :--- | :--- |\n| **前端开发服务** | Vite (Vue / React) | `http://localhost:5173` | 热更新前端服务 |\n| | Next.js / React (CRA) | `http://localhost:3000` | SSR / 前端开发服务 |\n| **后端 API 服务** | Spring Boot / Go (Gin) | `http://localhost:8080` | 主 API 接口 |\n| | Node.js (NestJS / Express) | `http://localhost:3000` 或 `8000` | 后端接口服务 |\n| | Python (FastAPI / Django) | `http://localhost:8000` | 后端接口服务 |\n| **反向代理 / 网关** | Nginx / Traefik | `http://localhost:80` 或 `8080` | 统一前端与 API 路由转发 |\n\n### 2. 数据库与缓存中间件\n如果你需要通过本地客户端（如 Navicat、DBeaver、RedisInsight）直连本地数据库，可使用以下端口：\n\n| 中间件 | 默认端口 | 常用连接地址 | 默认账号/密码示例（参考 `.env`） |\n| :--- | :--- | :--- | :--- |\n| **MySQL / MariaDB** | `3306` | `localhost:3306` | `root` / 见项目配置 |\n| **PostgreSQL** | `5432` | `localhost:5432` | `postgres` / 见项目配置 |\n| **Redis** | `6379` | `localhost:6379` | 默认无密码或根据配置指定 |\n| **MongoDB** | `27017` | `localhost:27017` | `root` / 见项目配置 |\n\n### 3. 可选的管理面板 / 辅助工具（若项目开启）\n| 工具 | 默认端口 | 访问地址 | 用途 |\n| :--- | :--- | :--- | :--- |\n| **phpMyAdmin** | `8080` / `8081` | `http://localhost:8080` | MySQL Web 端可视化管理 |\n| **pgAdmin** | `5050` / `8088` | `http://localhost:5050` | PostgreSQL Web 可视化管理 |\n| **RabbitMQ Management** | `15672` | `http://localhost:15672` | 消息队列后台管理（AMQP 协议为 `5672`） |\n| **MailHog / Mailpit** | `8025` | `http://localhost:8025` | 本地邮件发送拦截与查看工具 |\n\n---\n\n## 四、 常见问题排查（FAQ）\n\n1. **报错 `bind: address already in use`（端口冲突）**\n   * **原因**：本地机器上已经运行了占用相同端口的程序（如本地跑的 MySQL/Redis，或者另一个 Docker 容器）。\n   * **解决办法**：\n     * Windows: `netstat -ano | findstr :<端口号>` 查看并关闭冲突进程；\n     * macOS/Linux: `lsof -i :<端口号>` 找到 PID 并通过 `kill -9 <PID>` 终止；\n     * 或者在项目 `.env` / `docker-compose.yml` 中将宿主机端口改成其他可用端口（例如将 `3306:3306` 改为 `3307:3306`）。\n\n2. **代码修改后页面没有刷新或改动未生效**\n   * 检查 `docker-compose.yml` 中是否有挂载代码卷（`volumes: - .:/app`）。\n   * 若修改了 `package.json`、`pom.xml` 或 `Dockerfile` 本身，必须加 `--build` 重新构建：\n     ```bash\n     docker compose up -d --build <服务名>\n     ```\n\n3. **容器启动后立即退出（Exited）**\n   * 执行 `docker compose ps -a` 找到退出的容器名；\n   * 执行 `docker compose logs <服务名>` 查看退出的报错日志定位原因。"
       },
       {
+        "task_id": "clr_t02",
+        "tshu_score": 20.73,
+        "response": "在 Docker 中将时区从 UTC 改为 `Asia/Shanghai`，主要有以下几种常见方式，可以根据你的实际使用场景选择：\n\n---\n\n### 方法一：运行容器时指定环境变量 `TZ`（最简单推荐）\n\n如果基础镜像中已经包含 `tzdata` 数据包（如大多数 Debian/Ubuntu、CentOS 基础镜像），只需在启动时传入环境变量 `TZ` 即可。\n\n#### 1. 使用 `docker run` 命令：\n```bash\ndocker run -d -e TZ=Asia/Shanghai --name my_app <镜像名>\n```\n\n#### 2. 使用 `docker-compose.yml`：\n```yaml\nversion: '3.8'\nservices:\n  my_app:\n    image: <镜像名>\n    environment:\n      - TZ=Asia/Shanghai\n```\n\n---\n\n### 方法二：挂载宿主机时区文件（与宿主机保持一致）\n\n如果你的宿主机本身就是 `Asia/Shanghai` 时区，可以直接将宿主机的时区配置挂载到容器中：\n\n#### 1. 使用 `docker run` 命令：\n```bash\ndocker run -d \\\n  -v /etc/localtime:/etc/localtime:ro \\\n  -v /etc/timezone:/etc/timezone:ro \\\n  --name my_app <镜像名>\n```\n*(注：`:ro` 表示只读挂载)*\n\n#### 2. 使用 `docker-compose.yml`：\n```yaml\nversion: '3.8'\nservices:\n  my_app:\n    image: <镜像名>\n    volumes:\n      - /etc/localtime:/etc/localtime:ro\n      - /etc/timezone:/etc/timezone:ro\n```\n\n---\n\n### 方法三：在 Dockerfile 中永久固化（构建镜像推荐）\n\n极简镜像（如 Alpine）默认没有包含 `tzdata`，直接传 `TZ` 可能无效。建议在编写 Dockerfile 时配置好：\n\n#### 1. Ubuntu / Debian 镜像：\n```dockerfile\nFROM ubuntu:latest\n# 或 FROM debian:latest\n\nENV TZ=Asia/Shanghai\nRUN apt-get update && apt-get install -y tzdata \\\n    && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \\\n    && echo ${TZ} > /etc/timezone \\\n    && rm -rf /var/lib/apt/lists/*\n```\n\n#### 2. Alpine 镜像：\n```dockerfile\nFROM alpine:latest\n\nENV TZ=Asia/Shanghai\nRUN apk add --no-cache tzdata \\\n    && cp /usr/share/zoneinfo/${TZ} /etc/localtime \\\n    && echo \"${TZ}\" > /etc/timezone\n```\n\n#### 3. CentOS / RedHat 镜像：\n```dockerfile\nFROM centos:7\n\nENV TZ=Asia/Shanghai\nRUN ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime\n```\n\n---\n\n### 方法四：在已经运行的容器中临时修改\n\n如果容器已经在运行，且不想重启或重新构建：\n\n1. 进入容器：\n   ```bash\n   docker exec -it <容器名或ID> /bin/sh\n   # 或者\n   docker exec -it <容器名或ID> /bin/bash\n   ```\n2. 执行时区链接（前提是容器内已有 `/usr/share/zoneinfo`）：\n   ```bash\n   ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime\n   echo \"Asia/Shanghai\" > /etc/timezone\n   ```\n\n---\n\n### 验证时区是否生效\n\n在容器外运行以下命令检查当前时间：\n```bash\ndocker exec -it <容器名或ID> date\n```\n输出类似如下即代表成功（时区缩写为 `CST`）：\n```text\nSat Nov 14 12:52:45 CST 2026\n```\n\n---\n\n### 常见注意事项\n* **Java / JVM 应用：** 有时即便系统时区改了，Java 应用日志依然是 UTC。可以在 JVM 启动参数中显式添加 `-Duser.timezone=Asia/Shanghai`。\n* **Alpine 极简镜像：** 务必确认安装了 `tzdata`，否则单纯 `-e TZ=Asia/Shanghai` 是无效的。"
+      },
+      {
         "task_id": "clr_t01",
-        "tshu_score": 22.67,
+        "tshu_score": 17.48,
         "response": "结论先行：**加索引有一定效果（可能从 10 秒降到 1~2 秒），但无法从根本上解决“慢”的问题，绝对无法达到毫秒级的瞬间返回。**\n\n具体原因和背后的机制如下：\n\n---\n\n### 一、为什么加索引能变快一点？（Index-Only Scan）\n\n对于全表 `COUNT(*)`，PostgreSQL 默认会走**全表扫描（Seq Scan）**，这意味着它必须把磁盘上该表的所有数据页（包含所有列的数据、行头信息等）全部读入内存。\n\n如果你建立了一个小字段的索引（例如 `CREATE INDEX ON table(id);`）：\n1. 优化器可能会选择走 **Index-Only Scan（仅索引扫描）**。\n2. **原因：** 索引树只包含索引键和行指针，占用的磁盘空间和页数远小于整张表。扫描索引的 I/O 开销通常比扫描全表小得多。\n3. **效果：** I/O 减少，耗时会缩短。\n\n---\n\n### 二、为什么加索引无法彻底解决问题？\n\n即使走了索引扫描，依然会很慢，核心原因有两个：\n\n#### 1. PostgreSQL 的 MVCC 机制与可见性检查\n* PG 的索引项中**没有存储事务可见性信息**（没有 `xmin` / `xmax`）。\n* 索引扫描时，PG 必须知道某一行对当前事务是否可见。\n* **依赖 Visibility Map（可见性映射表）：**\n  * 如果表最近被完整 `VACUUM` 过，Visibility Map 标记了哪些数据页是“全可见的（all-visible）”，PG 就可以只读索引，不回表。\n  * 如果表上有频繁的增删改，且没有及时 `VACUUM`，Visibility Map 失效，PG **每次读索引依然必须回表去检查行可见性（Heap Fetch）**，此时性能甚至可能比全表顺序扫描还要差（因为随机 I/O 增多）。\n\n#### 2. 时间复杂度仍然是 $O(N)$\nPostgreSQL 没有维护全局的行数计数器（因为 MVCC 下不同事务看到的行数可能不同）。无论走全表还是走索引，**它都必须把表里的几千万甚至上亿条记录挨个“数”一遍**。数 1 亿个索引节点依然需要耗费大量的 CPU 和内存访问时间。\n\n---\n\n### 三、如果带 `WHERE` 条件，索引有用吗？\n\n* **极其有用！**\n* 如果你的查询是 `SELECT COUNT(*) FROM t WHERE status = 1`：\n  * **没有索引：** 必须全表扫描几千万行，挨个判断 `status = 1`。\n  * **有索引：** 只要走索引，PG 只需要扫描匹配 `status = 1` 的那些索引条目。如果过滤后只剩几千行，速度会从几秒瞬间降到几毫秒。\n\n---\n\n### 四、大表全表 `COUNT(*)` 的真正解法\n\n针对大表的无条件 `COUNT(*)`，生产环境通常采用以下替代方案：\n\n#### 方案 1：业务接受估算值（毫秒级返回，最推荐）\n如果只是做**分页展示**（如后台管理列表显示“共 xx 页”），完全不需要精确数字。\n\n* **直接查系统元数据（极快，0.1ms）：**\n  ```sql\n  SELECT reltuples::bigint AS estimate_count \n  FROM pg_class \n  WHERE relname = 'your_table_name';\n  ```\n  *(注：该值由 `ANALYZE` 或 `autovacuum` 更新，存在少量偏差，但对大表分页完全足够)*\n\n* **利用 `EXPLAIN` 的预估值：**\n  ```sql\n  EXPLAIN SELECT count(*) FROM your_table;\n  -- 从执行计划输出的 rows=XXXXXX 中提取\n  ```\n\n#### 方案 2：精确计数 —— 触发器维护汇总表\n如果业务**必须精确**（例如财务数据、审计）：\n1. 创建一张专门存总数的表：\n   ```sql\n   CREATE TABLE table_counts (\n       tbl_name text PRIMARY KEY,\n       total_count bigint NOT NULL\n   );\n   ```\n2. 在大表上建 `AFTER INSERT OR DELETE` 触发器，更新对应的 `total_count`。\n3. **缺点：** 高并发写入大表时，这一行汇总记录会成为**行锁热点**，可能降低写入吞吐量。\n\n#### 方案 3：应用层缓存（Redis）\n* 增删数据时，在应用层或通过 Canal/CDC 同步更新 Redis 中的计数器。\n\n#### 方案 4：物化视图（周期性精确统计）\n* 适合报表类业务，每天或每小时刷新一次：\n  ```sql\n  CREATE MATERIALIZED VIEW mv_my_table_count AS \n  SELECT count(*) FROM my_table;\n\n  -- 定时刷新\n  REFRESH MATERIALIZED VIEW CONCURRENTLY mv_my_table_count;\n  ```\n\n---\n\n### 总结建议\n\n1. **带过滤条件的 COUNT：** 果断建索引，效果显著。\n2. **不带条件的 COUNT，只为看总页数：** 不要改索引，改用 `pg_class.reltuples` 查估算值。\n3. **不带条件的 COUNT，必须精确且高频查询：** 加索引治标不治本，请使用**汇总表/Redis**异步维护计数。"
       },
       {
-        "task_id": "inc_t01",
-        "tshu_score": 22.29,
-        "response": "遇到**支付核心链路异常 + 刚刚发版**的场景，首要原则是：**「先止血，后排查；边操作，边通报」**。\n\n12% 的 5xx 持续 8 分钟已属于**重大/高危生产故障（通常定级为 P1/P0）**，支付回调失败会导致用户“扣款成功但订单未履约”，极易引发客诉和恐慌。\n\n请立即按以下步骤执行：\n\n---\n\n### 一、 核心决策与止血措施（立即执行）\n\n#### 1. 立即触发版本回滚（Rollback）\n* **不要尝试在生产环境排查代码或热修复**。刚刚发版且指标迅速恶化，99% 与本次发版直接相关。\n* 执行一键回滚至上一稳定版本（镜像/配置全部回退）。\n* **保留现场**：回滚时若条件允许，**摘除流量保留 1 台故障 Pod/实例**（打上隔离标记，切断外部流量），用于保留内存 Dump、GC 日志和异常堆栈；其余实例全部回滚。\n\n#### 2. 回滚过程中的监控观察\n* 观察发布平台回滚进度。\n* 重点盯紧 APM/Prometheus 监控大盘：\n  * 支付回调 5xx 错误率是否下降至 < 0.1%；\n  * 渠道耗时（Latency）是否恢复；\n  * Pod 状态及重启计数（CrashLoopBackOff、OOMKilled 等）。\n\n---\n\n### 二、 状态同步与通报（同步进行）\n\n立即拉起**线上应急协同群 / 会议**，并在核心沟通群（技术大群、故障协同群、业务/运营支持群）按如下规范同步。\n\n#### 1. 故障初报模版（可直接复制修改发出）\n> **【故障通报 - 初始通报】**  \n> * **故障现象**：支付回调接口 5xx 异常率突增至 12%（基线 0.1%），已持续 8 分钟。  \n> * **影响范围**：部分用户支付后订单状态更新延迟，可能出现“已扣款但订单待支付/未发货”。  \n> * **疑似原因**：与刚刚完成的版本发布强相关。  \n> * **当前动作**：已暂停发版，**正在全量回滚上一稳定版本**，预计 3 分钟内完成。  \n> * **应急责任人**：指挥/主程 [姓名]，监控/通报 [姓名]。  \n> * **下次同步时间**：5 分钟后（回滚完成后即时同步）。\n\n#### 2. 客服与业务对齐\n* **通知客服团队**：统一客服话术，告知客服“支付网关有短暂延迟，用户资金安全，系统正在自动同步，请安抚用户切勿重复发起扣款或申请退款”。\n* **监控客诉渠道**：留意客诉是否出现涌入，防止工单堆积。\n\n---\n\n### 三、 回滚生效后的恢复与数据补偿（回滚后 10~30 分钟）\n\n回滚成功、指标恢复正常后，不能直接算结束，必须处理这 8+ 分钟内受损的数据：\n\n#### 1. 启动主动查单与补单任务（Active Query / Compensation）\n* 微信/支付宝/银联等三方支付虽然有指数退避重试（如 15s/15s/30s/3m/10m...），但由于回调已持续 8 分钟报 5xx，部分回调可能触发了支付机构的降级或还在等待下一次长间隔重试。\n* **主动拉取**：立即启动针对过去 15 分钟内“待支付/处理中”订单的**主动对账/查单轮询任务**，主动向三方渠道查询支付状态并驱动本地履约。\n* **死信队列排查**：如果有回调消息走 MQ 且进入了死信队列（DLQ），等待消费者服务恢复后重新消费。\n\n#### 2. 故障进展通报（回滚完成后）\n> **【故障通报 - 进展/恢复通报】**  \n> * **当前状态**：回滚已完成，支付回调 5xx 错误率已回落至基线水平（< 0.1%）。  \n> * **受损数据统计**：受影响时间窗口约 [XX] 分钟，涉及支付订单约 [XX] 笔。  \n> * **补偿措施**：主动补单对账脚本已启动，未履约订单正在逐步消化，预计 [XX] 分钟内全部平账。  \n> * **后续安排**：排查版本缺陷，组织事后复盘（Post-mortem）。\n\n---\n\n### 四、 事后排查与根因定位（恢复后跟进）\n\n等生产环境平稳、补单完成后，利用之前保留的隔离实例或日志排查：\n1. **常见踩坑点排查**：\n   * **依赖注入/配置缺失**：发版是否缺少新配置项、密钥、三方验签公钥变更？\n   * **SQL/表结构变更**：是否有慢 SQL 锁表，或新增字段导致旧代码/新代码反序列化失败？\n   * **NPE/验签逻辑改动**：新版本是否调整了三方签名校验算法或解密流程？\n   * **连接池耗尽**：DB 连接池、HTTP 线程池是否在启动后被瞬间占满？\n2. **复盘要点**：\n   * 为什么预发/灰度环境没有拦截该问题？（缺少灰度金丝雀机制，还是测试用例未覆盖回调流程？）\n   * 为什么发布持续了 8 分钟才响应？监控告警的触发阈值和通道是否需要调优？"
-      },
-      {
         "task_id": "clr_t06",
-        "tshu_score": 21.65,
+        "tshu_score": 17.07,
         "response": "只选一个，**选 Zustand**。\n\n针对 **5 人团队** 的 **中台项目**，选择 Zustand 的核心理由如下：\n\n### 1. 中台业务的状态特征：杀鸡不需要牛刀\n中台项目 80% 以上的状态是**服务端缓存状态**（表格数据、下拉枚举、表单详情），真正需要跨组件共享的全局客户端状态极少（通常只有：当前用户信息、权限列表、菜单展开/折叠、多标签页 Tabs、Theme）。\n* 用 Redux（哪怕是 RTK）管理这点状态，不仅要配 Store、Provider、Slice、Selector，样板代码和心智负担过重；\n* Zustand 一个文件、几个 Hook 就能解决，几行代码搞定，没有任何多余的仪式感。\n\n### 2. 5 人团队的人效与上手成本\n5 人规模的团队最需要的是**交付速度和敏捷度**，不需要靠 Redux 那套繁琐的教条来做防呆设计：\n* **零学习成本**：Zustand 本质就是闭包加发布订阅，API 直观到新成员半天内就能完全熟练掌握；\n* **极少模板代码**：不用写 Action、Reducer、Dispatch，避免团队在“状态样板代码”上浪费大量工时。\n\n### 3. 中台特有场景的高频痛点：非组件环境调用\n中台项目非常依赖在 **Axios 拦截器**、**路由守卫/路由钩子** 中读写状态（例如：请求 401 时清除 Token、跳转前获取权限列表）：\n* Redux 在组件外使用相对繁琐（或容易引入依赖循环）；\n* Zustand 原生支持脱离 React 渲染上下文直接读写：`useUserStore.getState().logout()`，在工具函数中随调随用，极其舒服。\n\n---\n\n### 推荐的现代中台标准架构搭配\n不要把接口请求全塞进全局 Store，推荐方案：\n* **全局客户端状态**（用户信息/权限/Layout/全局配置）：**Zustand**\n* **服务端数据与缓存**（表格、CURD 接口）：**TanStack Query (React Query)** 或 **ahooks (useRequest)**"
       }
     ]
   },
   {
     "model": "auto/gemini-4-argon",
+    "reasoning_effort": "medium",
+    "tier": "T1 · 人话级",
     "n_samples": 24,
-    "tshu_score": 9.66,
-    "ci_lower": 6.57,
-    "ci_upper": 12.71,
+    "tshu_score": 7.51,
+    "ci_lower": 5.39,
+    "ci_upper": 9.94,
     "opening_entropy": 0.9485,
     "metrics": {
       "cvd": 20.97,
-      "hed": 5.95,
-      "enu": 11.03,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 0.02,
-      "pni": 5.59,
-      "vtr": 17.87
+      "hed": 3.25,
+      "enu": 8.2,
+      "cci": 6.33,
+      "pni": 4.97,
+      "vtr": 0.6
     },
     "worst": [
       {
         "task_id": "code_t02",
-        "tshu_score": 27.93,
+        "tshu_score": 21.16,
         "response": "这个错误的含义非常明确：**Nginx 尝试连接本地的 8080 端口，但是被操作系统直接拒绝了。** \n\n这通常意味着**没有任何进程在监听 `127.0.0.1:8080`**，或者防火墙/安全策略拦截了连接。\n\n### 一、 常见原因\n\n1. **后端服务挂了（最常见）**：你的后端应用（Java/Node.js/Python/Go等）没有启动，或者因为报错崩溃退出了。\n2. **端口或 IP 监听错误**：\n   * 后端服务监听的不是 8080 端口（比如配成了 8081）。\n   * 后端服务监听在了**局域网 IP**（如 `192.168.1.100:8080`）或 **IPv6**（`[::1]:8080`），而没有监听 `127.0.0.1` 或 `0.0.0.0`。\n3. **容器网络隔离（如果是 Docker 环境）**：Nginx 和后端服务在不同的容器里。在 Nginx 容器里访问 `127.0.0.1` 实际上是访问 Nginx 容器自己，而不是宿主机或后端容器。\n4. **安全策略拦截**：SELinux（CentOS/RHEL 常见）默认不允许 Nginx 进行网络连接，或者本地防火墙规则拦截。\n5. **后端连接队列满**：后端服务负载极高，TCP 全连接队列（backlog）满了，拒绝新的连接。\n\n---\n\n### 二、 下一步排查步骤（按顺序执行）\n\n请在 Nginx 所在的服务器上打开终端，依次执行以下命令排查：\n\n#### 第一步：检查 8080 端口到底有没有在监听\n执行以下命令查看端口状态：\n```bash\nsudo ss -tulnp | grep 8080\n# 或者使用 netstat\nsudo netstat -tulnp | grep 8080\n```\n* **情况 A：没有任何输出。**\n  * **结论**：后端服务根本没运行，或者运行在了别的端口。\n  * **操作**：去启动你的后端服务，如果启动失败，去查**后端服务的日志**（比如内存不足 OOM、代码报错等）。\n* **情况 B：有输出，但显示的是 `192.168.x.x:8080` 或 `[::1]:8080`。**\n  * **结论**：监听地址不对。\n  * **操作**：修改后端配置，让其监听 `0.0.0.0:8080` 或 `127.0.0.1:8080`；或者修改 Nginx 的 upstream 为后端实际监听的 IP。\n* **情况 C：有输出，显示 `127.0.0.1:8080` 或 `0.0.0.0:8080`。**\n  * **结论**：服务在运行，继续看第二步。\n\n#### 第二步：绕过 Nginx，直接测试后端服务\n在服务器上直接用 `curl` 访问后端，看看是不是 Nginx 的问题：\n```bash\ncurl -I http://127.0.0.1:8080\n```\n* **如果提示 `Connection refused`**：说明问题出在操作系统或后端服务本身（比如上面提到的 Docker 网络问题），跟 Nginx 无关。\n* **如果能正常返回 HTTP 状态码（如 200, 404 等）**：说明后端正常，是 Nginx 被限制了，继续看第三步。\n\n#### 第三步：排查 SELinux 限制（仅限 CentOS / RHEL / Fedora）\n如果 `curl` 能通，但 Nginx 报 502，90% 是 SELinux 拦截了。\n检查 SELinux 状态：\n```bash\ngetenforce\n```\n如果是 `Enforcing`，执行以下命令允许 Nginx 连接网络：\n```bash\nsudo setsebool -P httpd_can_network_connect 1\n```\n执行完后再刷新网页测试。\n\n#### 第四步：排查 Docker 环境问题（如适用）\n如果你的 Nginx 是用 Docker 跑的：\n* **问题**：Nginx 配置里的 `127.0.0.1` 指的是 Nginx 容器内部。\n* **解决**：\n  * 如果后端在宿主机上：将 Nginx 配置里的 `127.0.0.1` 改为宿主机的内网 IP（或者 `host.docker.internal`）。\n  * 如果后端在另一个容器里：使用 Docker Compose 将它们放在同一个 network 下，upstream 填写后端的**容器服务名**（如 `http://backend-service:8080`）。\n\n### 总结排查口诀：\n**一查端口在不在（`ss -tulnp`），二用 curl 测后台，三看 Docker 和防火墙（SELinux）。**"
       },
       {
         "task_id": "inc_t02",
-        "tshu_score": 21.95,
+        "tshu_score": 19.52,
         "response": "面对主从延迟高达 300 秒（5分钟）且所有读流量都在从库的危机，最直接的风险是**严重的数据不一致引发业务错乱**（例如用户刚付完款看到未支付、刚发完帖刷新看不到，甚至触发基于旧数据的错误状态机流转）。\n\n此时不能按部就班地去调优参数，必须按照**“先止血（保业务），再查因，后恢复”**的顺序进行紧急处理。\n\n以下是现在**最该做**的 4 个步骤：\n\n### 第一步：立即评估并切流（业务止血）\n不要盲目把所有流量切回主库，否则主库可能会瞬间被压垮，导致全面宕机。\n1. **核心强一致读切回主库**：立即通过配置中心或修改路由，将**对数据一致性要求极高**的读请求（如：订单状态、账户余额、登录鉴权等）切回主库。\n2. **非核心读保留或降级**：对于商品列表、历史记录、报表统计等可以容忍延迟的业务，继续留在从库；如果业务实在无法容忍 5 分钟前的旧数据，考虑在应用层做局部服务降级。\n3. **紧盯主库监控**：切流过程中，密切关注主库的 CPU、IOPS 和连接数，随时准备限流。\n\n### 第二步：30秒快速定位延迟原因（查现场）\n登录**从库**，执行以下两个命令，立刻判断卡在哪里：\n\n**1. 执行 `SHOW SLAVE STATUS\\G`（或 `SHOW REPLICA STATUS\\G`）**\n重点看这几个指标：\n*   `Slave_IO_Running` 和 `Slave_SQL_Running`：是否都是 Yes。\n*   `Master_Log_File` vs `Relay_Log_Master_Log_File`：如果差得很远，说明是网络问题或从库磁盘 IO 慢（IO 线程跟不上）。如果一样，说明是 **SQL 线程回放慢**（99% 的情况是这个）。\n*   `Coordinator_State` / `Slave_SQL_Running_State`：看看 SQL 线程当前正在干什么。\n\n**2. 执行 `SHOW PROCESSLIST;`**\n看看当前从库里有什么查询：\n*   **是否有慢查询锁表？** 如果从库上有个跑了几百秒的 `SELECT` 大查询，或者备份任务（如 mysqldump），它可能会产生 MDL 锁（元数据锁）或抢占大量磁盘 IO，导致同步线程被阻塞。\n*   **SQL 线程卡在哪条语句？** 如果看到 SQL 线程的状态是 `Reading event from the relay log` 或者是正在执行某个具体的 `UPDATE/DELETE`，且时间很长。\n\n### 第三步：针对性紧急处置（解决延迟）\n\n根据第二步查出的原因，采取对应措施：\n\n*   **情况 A：从库上有大查询/慢查询抢占资源或锁表**\n    *   **动作**：毫不犹豫，直接 `KILL` 掉从库上的那些慢查询线程！优先保证主从同步。\n*   **情况 B：主库刚才执行了一个超级大事务（如 `DELETE/UPDATE` 了几百万行数据，或者大表 `DDL`）**\n    *   **动作**：这种最难办，因为从库必须完整回放完这个事务。此时**千万不要重启从库**（重启会导致漫长的回滚，更慢）。只能等它跑完。在等待期间，执行“第一步”的切流，并执行下面的“临时提速”。\n*   **情况 C：主库写入量暴增，从库单线程回放跟不上**\n    *   **动作**：开启并行复制（如果用的是 MySQL 5.7+ 的 `LOGICAL_CLOCK` 或 8.0 的 `WRITESET`，可以动态调大 `slave_parallel_workers`）。\n\n### 第四步：开启“狂暴模式”临时加速追赶（大招）\n如果确认是从库磁盘 IO 性能瓶颈导致追赶太慢，可以**在从库上**动态修改双一参数，牺牲从库的崩溃安全性来换取极致的写入速度：\n\n```sql\n-- 将刷盘策略改为每秒刷盘，大大减少IO次数\nSET GLOBAL innodb_flush_log_at_trx_commit = 2; \n-- 将binlog刷盘改为由操作系统决定（如果从库开启了log_slave_updates）\nSET GLOBAL sync_binlog = 1000; \n```\n**注意**：这招提速效果立竿见影。但**等到 `Seconds_Behind_Master` 降为 0 之后，记得一定要改回默认值（通常是 1 和 1）**。\n\n---\n\n### 总结你现在的行动指南：\n1. **通知开发**：核心业务读请求切主库（注意主库负载）。\n2. **连上从库**：`SHOW PROCESSLIST` 看有没有慢查询，有就 `KILL` 掉。\n3. **动态提速**：设置从库 `innodb_flush_log_at_trx_commit = 2` 和 `sync_binlog = 1000` 让它全力追赶。\n4. **追平之后**：恢复参数，恢复流量，再去翻 Binlog 查到底是什么大事务导致的，进行事后复盘（比如排查是不是有没加索引的 Update，或者定时任务批量删数据）。"
       },
       {
-        "task_id": "inc_t01",
-        "tshu_score": 19.52,
-        "response": "这是一个典型的**P0级（最高优先级）生产事故**。支付回调失败直接影响资金入账和用户体验（用户付了钱但订单未完成）。由于故障发生在“刚刚完成发版”之后，基本可以锁定是**变更引起**的。\n\n现在的核心原则是：**先止血（回滚），后排障，透明沟通。**\n\n以下是你现在应该立即执行的步骤和状态同步话术：\n\n### 第一步：立即采取的措施（0-5分钟内并行执行）\n\n1. **立即回滚（最高优先级）：**\n   * 不要花时间去查代码逻辑！已经持续8分钟了，直接将代码/镜像回滚到上一个稳定版本。\n   * 如果发版涉及数据库变更（DDL），评估回滚代码是否与新表结构兼容。如果不兼容，立刻采用临时配置开关降级或修复。\n2. **保留现场（为后续复盘做准备）：**\n   * 在重启或回滚机器前，如果条件允许，快速摘流一台机器保留现场，或者确保错误日志（Error Log）、链路追踪（Trace）、监控快照已被收集。\n3. **观察监控：**\n   * 回滚后，紧盯 5xx 错误率是否下降，观察支付成功率和回调积压情况。\n\n---\n\n### 第二步：如何同步状态（话术模板）\n\n你需要立即在**应急响应群/技术群**和**业务/客服群**同步状态。沟通要简明扼要，包含：**现状、影响、正在做什么、预计何时更新**。\n\n#### 1. 面向技术/产研团队（应急群）\n> **【P0 故障告警 - 支付回调异常】**\n> * **现象**：支付回调接口 5xx 错误率从 0.1% 飙升至 12%，目前已持续 8 分钟（XX:XX 开始）。\n> * **原因初步判断**：疑似与刚刚完成的 [服务名称/版本号] 发版强相关。\n> * **影响面**：部分用户支付成功后，订单状态无法及时更新为“已支付”。\n> * **当前措施**：正在执行紧急回滚操作，负责人 @张三。\n> * **协助请求**：请网关/DBA/支付组 @李四 @王五 进群待命，协助排查是否有连带影响。\n> * **下次同步**：5分钟后（回滚完成后）同步最新状态。\n\n#### 2. 面向业务/产品/客服团队（业务通知群）\n> **【系统异常通知】**\n> * **问题**：目前系统监测到支付结果通知存在部分延迟/失败（约影响 12% 的支付订单）。\n> * **表现**：用户扣款成功，但App内订单可能仍显示“待支付”或“处理中”。\n> * **处理进度**：技术团队已定位问题，正在紧急恢复中，预计 5-10 分钟内恢复正常。\n> * **客服口径建议**：如遇用户进线反馈支付未到账，请安抚用户“由于网络波动，支付结果正在同步中，系统会在稍后自动更新订单状态，不会吞款，请勿重复支付”，并记录用户单号。\n\n---\n\n### 第三步：服务恢复后的擦屁股工作（T+15分钟后）\n\n当回滚完成，5xx 降回 0.1% 后，危机只解除了一半，接下来必须处理**“那8分钟内失败的12%的订单”**：\n\n1. **同步恢复状态：** 在上述群里告知“服务已于 XX:XX 恢复，5xx 已回归正常水平，接下来进行异常数据处理。”\n2. **观察渠道重试机制：** 微信/支付宝等第三方支付渠道在收到 5xx 后，通常会有阶梯式的**自动重试机制**（如 15s, 30s, 3m...）。观察是否有之前失败的订单正在陆续通过重试恢复成功。\n3. **主动补偿（对账/查单）：**\n   * 不能完全依赖第三方重试。需要从日志中捞出这 8-15 分钟内所有返回 5xx 的回调请求（或处于“支付中”状态的订单）。\n   * 触发定时任务或手动执行脚本，主动调用支付渠道的“查询订单接口”，将已支付的订单状态修正，并补发业务通知（发货、加积分等）。\n4. **排查根因与复盘（Review）：**\n   * 在测试/预发环境复现刚刚发版代码的 Bug（常见原因：空指针、配置缺失、序列化失败、数据库连接池打满、下游接口超时等）。\n   * 24小时内输出 COE（故障复盘报告），改进发版流程（如：为什么灰度发布没拦截住？是否需要增加核心链路的自动化回归测试？）。"
+        "task_id": "clr_t02",
+        "tshu_score": 14.85,
+        "response": "将 Docker 容器的时区从 UTC 改为 `Asia/Shanghai` 有以下几种常见方法，按推荐程度排序：\n\n### 方法一：通过环境变量设置（最推荐，简单高效）\n\n如果你的基础镜像包含了 `tzdata` 包（绝大多数常规镜像如 Ubuntu、Debian、CentOS 等都包含），只需要在启动时添加 `-e TZ=Asia/Shanghai` 环境变量即可。\n\n*   **使用 `docker run`：**\n    ```bash\n    docker run -e TZ=Asia/Shanghai -d your_image\n    ```\n\n*   **使用 `docker-compose.yml`：**\n    ```yaml\n    version: '3'\n    services:\n      your_service:\n        image: your_image\n        environment:\n          - TZ=Asia/Shanghai\n    ```\n\n### 方法二：挂载宿主机的时区文件（适合宿主机已经是 CST 时区）\n\n如果宿主机本身已经是 `Asia/Shanghai` 时区，可以直接把宿主机的时区配置文件挂载到容器内（建议加上 `:ro` 只读权限，防止容器修改宿主机配置）。\n\n*   **使用 `docker run`：**\n    ```bash\n    docker run -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -d your_image\n    ```\n\n*   **使用 `docker-compose.yml`：**\n    ```yaml\n    version: '3'\n    services:\n      your_service:\n        image: your_image\n        volumes:\n          - /etc/localtime:/etc/localtime:ro\n          - /etc/timezone:/etc/timezone:ro\n    ```\n    *注：CentOS/RedHat 宿主机可能没有 `/etc/timezone` 文件，只挂载 `/etc/localtime` 即可。*\n\n---\n\n### 方法三：在 Dockerfile 中永久修改（适合自己构建镜像）\n\n如果你正在编写 `Dockerfile`，建议在构建镜像时就把时区写死。不同的基础镜像命令有所不同：\n\n*   **Alpine 镜像（非常重要，Alpine 默认不包含时区数据）：**\n    ```dockerfile\n    FROM alpine:latest\n    ENV TZ=Asia/Shanghai\n    RUN apk add --no-cache tzdata \\\n        && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \\\n        && echo $TZ > /etc/timezone\n    ```\n\n*   **Debian / Ubuntu 镜像：**\n    ```dockerfile\n    FROM ubuntu:latest\n    ENV TZ=Asia/Shanghai\n    # DEBIAN_FRONTEND=noninteractive 用于防止安装时弹出交互式地区选择提示\n    RUN DEBIAN_FRONTEND=noninteractive apt-get update \\\n        && apt-get install -y tzdata \\\n        && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \\\n        && echo $TZ > /etc/timezone \\\n        && apt-get clean\n    ```\n\n*   **CentOS / RedHat 镜像：**\n    ```dockerfile\n    FROM centos:7\n    ENV TZ=Asia/Shanghai\n    RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone\n    ```\n\n---\n\n### 方法四：直接修改正在运行的容器（临时应急，重启容器后可能失效）\n\n如果容器已经在运行，且不方便重启，可以进入容器内部修改：\n\n1. 进入容器（以 root 身份）：\n   ```bash\n   docker exec -it -u root 容器名或ID /bin/sh\n   ```\n2. 创建软链接：\n   ```bash\n   ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime\n   echo \"Asia/Shanghai\" > /etc/timezone\n   ```\n   *(如果提示找不到 `/usr/share/zoneinfo`，说明是精简版镜像，需要先执行 `apt update && apt install -y tzdata` 或 `apk add tzdata`)*\n3. 验证时间：\n   ```bash\n   date -R\n   ```\n   看到输出类似 `+0800` 即表示修改成功。\n\n### 特殊情况：Java 应用时区不对\n有时候容器系统的时区改对了（输入 `date` 是对的），但里面的 **Java 程序**打印的日志还是 UTC。这是因为 JVM 默认可能没有读取系统时区。\n需要在启动 Java 时加上参数：`-Duser.timezone=Asia/Shanghai`，或者在 Docker 环境变量里加入：\n```yaml\nenvironment:\n  - TZ=Asia/Shanghai\n  - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai\n```"
       },
       {
         "task_id": "clr_t01",
-        "tshu_score": 18.74,
+        "tshu_score": 12.07,
         "response": "**结论：有用，但提升有限，且有前提条件。** \n\n在 PostgreSQL 中，大表 `SELECT count(*) FROM table` 很慢是众所周知的“特性”，这源于其底层的 **MVCC（多版本并发控制）** 机制。\n\n### 为什么加索引有用？（Index-Only Scan）\n1. **没有索引时**：Postgres 必须进行全表扫描（Seq Scan），遍历表中的每一行数据。\n2. **有索引时**：B-Tree 索引的体积通常远小于原表。Postgres 可以选择扫描体积最小的那个索引（**Index-Only Scan**），通过减少磁盘 I/O 来加速计数。\n*注：如果你的表已经有主键（Primary Key），它本身就是一个索引，此时再加普通索引对全表 `count(*)` 帮助不大，除非你建一个字段体积极小的索引。*\n\n### 为什么加了索引依然可能很慢？（核心原因）\n在 MySQL (InnoDB) 中，可以直接读取索引页来计数。但在 Postgres 中，**索引里不包含事务可见性信息（即这条数据是否已被删除或未提交）**。\n\n为了让 `count(*)` 走“纯索引扫描（Index-Only Scan）”而不去回表（Heap）确认数据是否存活，Postgres 依赖一张叫做 **Visibility Map (可见性映射表，简称 VM)** 的东西。\n* 如果数据块是“干净”的（很久没更新/删除），VM 会标记它，查询直接走索引，速度较快。\n* **如果表频繁进行 UPDATE / DELETE，且 `AUTOVACUUM` 没跟上**，VM 就会失效。此时即使有索引，Postgres 也必须“回表”去检查每一行数据的可见性，速度会退化到甚至比全表扫描还慢。\n\n---\n\n### 真正解决 Postgres 大表 Count 慢的方案：\n\n#### 1. 如果你需要【精确】计数：\n* **带 WHERE 条件**：如果是 `SELECT count(*) FROM table WHERE status = 1`，**加索引极度有用**！此时可以建立针对 `status` 的索引，或者部分索引（Partial Index）。\n* **优化 Vacuum**：对于全表计数，确保 `VACUUM` 频繁运行，保持 Visibility Map 最新，这样才能真正利用上索引的 Index-Only Scan。\n* **开启并行查询**：确保开启了并行扫描（Postgres 9.6+ 默认支持），调整 `max_parallel_workers_per_gather` 参数，让多个 CPU 核心同时数。\n* **使用触发器维护计数表**：如果业务强依赖全表精确总数且并发不高，可以建一张汇总表，用触发器在 `INSERT/DELETE` 时自动 `+1 / -1`。\n\n#### 2. 如果你只需要【估算】计数（推荐，绝大多数分页/看板场景）：\n如果只是为了在前端显示“共约 1000 万条数据”，千萬不要用 `count(*)`，直接查系统统计表，**耗时不到 1 毫秒**：\n\n```sql\nSELECT reltuples::bigint AS estimate \nFROM pg_class \nWHERE relname = '你的表名';\n```\n*(注意：如果包含特定 schema，建议用 `WHERE oid = 'schema_name.table_name'::regclass`)*\n\n**总结：** \n* **带条件的 count**：赶紧加索引，立竿见影。\n* **不带条件的全表 count**：加索引能缓解 I/O 压力，但必须配合良好的 `VACUUM` 策略；如果业务允许，强烈建议改用 `pg_class` 估算值。"
       },
       {
-        "task_id": "clr_t02",
-        "tshu_score": 18.71,
-        "response": "将 Docker 容器的时区从 UTC 改为 `Asia/Shanghai` 有以下几种常见方法，按推荐程度排序：\n\n### 方法一：通过环境变量设置（最推荐，简单高效）\n\n如果你的基础镜像包含了 `tzdata` 包（绝大多数常规镜像如 Ubuntu、Debian、CentOS 等都包含），只需要在启动时添加 `-e TZ=Asia/Shanghai` 环境变量即可。\n\n*   **使用 `docker run`：**\n    ```bash\n    docker run -e TZ=Asia/Shanghai -d your_image\n    ```\n\n*   **使用 `docker-compose.yml`：**\n    ```yaml\n    version: '3'\n    services:\n      your_service:\n        image: your_image\n        environment:\n          - TZ=Asia/Shanghai\n    ```\n\n### 方法二：挂载宿主机的时区文件（适合宿主机已经是 CST 时区）\n\n如果宿主机本身已经是 `Asia/Shanghai` 时区，可以直接把宿主机的时区配置文件挂载到容器内（建议加上 `:ro` 只读权限，防止容器修改宿主机配置）。\n\n*   **使用 `docker run`：**\n    ```bash\n    docker run -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -d your_image\n    ```\n\n*   **使用 `docker-compose.yml`：**\n    ```yaml\n    version: '3'\n    services:\n      your_service:\n        image: your_image\n        volumes:\n          - /etc/localtime:/etc/localtime:ro\n          - /etc/timezone:/etc/timezone:ro\n    ```\n    *注：CentOS/RedHat 宿主机可能没有 `/etc/timezone` 文件，只挂载 `/etc/localtime` 即可。*\n\n---\n\n### 方法三：在 Dockerfile 中永久修改（适合自己构建镜像）\n\n如果你正在编写 `Dockerfile`，建议在构建镜像时就把时区写死。不同的基础镜像命令有所不同：\n\n*   **Alpine 镜像（非常重要，Alpine 默认不包含时区数据）：**\n    ```dockerfile\n    FROM alpine:latest\n    ENV TZ=Asia/Shanghai\n    RUN apk add --no-cache tzdata \\\n        && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \\\n        && echo $TZ > /etc/timezone\n    ```\n\n*   **Debian / Ubuntu 镜像：**\n    ```dockerfile\n    FROM ubuntu:latest\n    ENV TZ=Asia/Shanghai\n    # DEBIAN_FRONTEND=noninteractive 用于防止安装时弹出交互式地区选择提示\n    RUN DEBIAN_FRONTEND=noninteractive apt-get update \\\n        && apt-get install -y tzdata \\\n        && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \\\n        && echo $TZ > /etc/timezone \\\n        && apt-get clean\n    ```\n\n*   **CentOS / RedHat 镜像：**\n    ```dockerfile\n    FROM centos:7\n    ENV TZ=Asia/Shanghai\n    RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone\n    ```\n\n---\n\n### 方法四：直接修改正在运行的容器（临时应急，重启容器后可能失效）\n\n如果容器已经在运行，且不方便重启，可以进入容器内部修改：\n\n1. 进入容器（以 root 身份）：\n   ```bash\n   docker exec -it -u root 容器名或ID /bin/sh\n   ```\n2. 创建软链接：\n   ```bash\n   ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime\n   echo \"Asia/Shanghai\" > /etc/timezone\n   ```\n   *(如果提示找不到 `/usr/share/zoneinfo`，说明是精简版镜像，需要先执行 `apt update && apt install -y tzdata` 或 `apk add tzdata`)*\n3. 验证时间：\n   ```bash\n   date -R\n   ```\n   看到输出类似 `+0800` 即表示修改成功。\n\n### 特殊情况：Java 应用时区不对\n有时候容器系统的时区改对了（输入 `date` 是对的），但里面的 **Java 程序**打印的日志还是 UTC。这是因为 JVM 默认可能没有读取系统时区。\n需要在启动 Java 时加上参数：`-Duser.timezone=Asia/Shanghai`，或者在 Docker 环境变量里加入：\n```yaml\nenvironment:\n  - TZ=Asia/Shanghai\n  - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai\n```"
+        "task_id": "rel_t01",
+        "tshu_score": 11.23,
+        "response": "这里提供几个不同风格的简短发布说明，供您根据发布场景选择：\n\n**版本一：标准技术版（适合 Git Release / 内部同步）**\n* **新增 (Feat)**：支持数据导出为 CSV 格式。\n* **修复 (Fix)**：解决订单偶发重复提交的问题。\n* **升级 (Chore)**：Redis 版本升级至 7.2。\n\n**版本二：用户可读版（适合产品更新公告 / 客户群）**\n**【版本更新说明】**\n1. **新功能**：新增 CSV 导出功能，数据处理更便捷。\n2. **体验优化**：修复了订单重复提交的问题，交易更稳定。\n3. **性能提升**：底层组件（Redis 7.2）升级，系统运行更高效。\n\n**版本三：极简一句话版（适合工作群通知 / 钉钉企微）**\n本次更新已上线：新增了 CSV 导出功能，修复了订单重复提交的 Bug，并将 Redis 升级至 7.2 以提升系统性能。"
       }
     ]
   },
   {
     "model": "auto/gemini-4-hydrogen",
+    "reasoning_effort": "low",
+    "tier": "T2 · 黑话级",
     "n_samples": 24,
-    "tshu_score": 14.4,
-    "ci_lower": 9.95,
-    "ci_upper": 19.3,
+    "tshu_score": 11.13,
+    "ci_lower": 7.4,
+    "ci_upper": 15.29,
     "opening_entropy": 0.9579,
     "metrics": {
       "cvd": 21.7,
-      "hed": 7.22,
-      "enu": 29.41,
-      "ssf": 0.0,
-      "af": 4.17,
-      "cci": 1.43,
-      "pni": 3.56,
-      "vtr": 20.52
+      "hed": 4.51,
+      "enu": 25.7,
+      "cci": 6.71,
+      "pni": 4.46,
+      "vtr": 0.95
     },
     "worst": [
       {
         "task_id": "rel_t03",
-        "tshu_score": 39.48,
+        "tshu_score": 33.6,
         "response": "不太建议直接这么写 🙂\n\n你的顾虑是对的——**用户确实不需要看“重构了微服务”“升级了某某框架”这类底层技术细节**。但「全面升级系统架构，赋能业务增长」属于典型的**空洞大词**：用户看完后依然不知道**到底改了什么、跟自己有什么关系、要不要注意什么**，甚至会觉得和“修复了已知问题，优化了用户体验”一样敷衍。\n\n写给用户看的发布说明，核心原则是：**不说“怎么改的（技术实现）”，只说“对你有什么用（用户感知）”。**\n\n---\n\n### 怎么把“架构升级”翻译成用户听得懂的人话？\n\n可以根据这次更新实际带来的效果，挑 1~3 点具体说明：\n\n* **如果是性能优化 / 架构重构：**\n  * ❌ 技术说法：重构了异步队列与缓存架构\n  * ✅ 用户说法：**页面加载和报表导出速度提升明显，高峰期操作更流畅。**\n* **如果是稳定性 / 容灾升级：**\n  * ❌ 技术说法：完成了多活高可用架构迁移\n  * ✅ 用户说法：**进一步提升了系统稳定性，减少极端情况下的服务中断风险。**\n* **如果是为后续功能铺路（暂无明显新功能）：**\n  * ❌ 空洞说法：赋能业务增长\n  * ✅ 用户说法：**优化了底层运行效率，为接下来的新功能上线打下基础（近期将陆续推出 XX 功能）。**\n* **如果伴随交互变化或兼容性影响（最重要，千万别略过）：**\n  * ✅ 必须写清：**本次更新后需重新登录 / 部分旧版浏览器不再支持 / XX 按钮位置调整到了 XX。**\n\n---\n\n### 几个可以直接套用的轻量模板\n\n如果这次主要是底层升级、没有太多前端新功能，可以这样写：\n\n1. **简洁版（适合常规版本）：**\n   > **系统性能与稳定性优化**\n   > 本次更新对系统底层进行了全面优化，提升了整体响应速度与高并发下的稳定性，日常操作将更加流畅。\n\n2. **诚实告知+预告版（适合大重构过渡期）：**\n   > **底层架构升级**\n   > 我们升级了核心服务架构，以提供更稳定、更快的服务响应。本次更新界面操作无重大变化，接下来我们将基于新架构陆续上线更多实用功能。\n\n如果你愿意简单列一下这次升级**具体改了哪些模块、或者主要想解决什么问题**（比如慢、卡、经常报错，还是为了接新业务），我可以帮你直接润色成一版简短、体面、用户一眼就能看懂的发布说明。"
       },
       {
         "task_id": "inc_t04",
-        "tshu_score": 37.02,
+        "tshu_score": 29.79,
         "response": "**不一定能好，甚至大多数情况下完全无效。**\n\n`CrashLoopBackOff` 只是一个状态，意思是**“容器启动后退出了，K8s 正在不断重启它”**。把 `livenessProbe.initialDelaySeconds` 调到 300，**只有一种情况**能解决：\n\n### 唯一能起作用的情况：应用启动太慢，被探针误杀\n如果你的应用本身没报错，只是冷启动需要好几分钟（比如大型 Java 服务），而现有的 `livenessProbe` 等不及，在启动完成前就判定失败并把容器杀掉了。\n\n> **注意：即便真是这个原因，也不建议把 `livenessProbe.initialDelaySeconds` 设成 300。**\n> - 副作用：这会导致服务启动后的前 5 分钟处于“无监控”状态，真卡死了也要等 5 分钟才重启。\n> - **正确做法**：保持 `livenessProbe` 的短延迟，改用 **`startupProbe`（启动探针）** 专门兜底慢启动：\n>   ```yaml\n>   startupProbe:\n>     httpGet:\n>       path: /healthz\n>       port: 8080\n>     failureThreshold: 30 # 最多容忍 30 * 10 = 300 秒\n>     periodSeconds: 10\n>   ```\n>   `startupProbe` 一旦成功，就会立刻交给 `livenessProbe` 接管，兼顾慢启动和故障快速恢复。\n\n---\n\n### 调大也没用的常见情况（占大多数）\n如果容器是**自己退出的**或**被系统 OOM 杀掉的**，把 `initialDelaySeconds` 调到 3000 也没用，该崩还是会崩：\n1. **程序自身报错退出**：代码 Panic/异常、连不上数据库、缺少环境变量 / ConfigMap / Secret、启动命令（`command`/`args`）写错。\n2. **内存溢出（OOMKilled）**：容器内存超过 `resources.limits.memory`，被宿主机内核强杀（Exit Code 137）。\n3. **主进程没有前台阻塞**：例如启动脚本把服务放到了后台运行（`&`），主进程执行完立刻退出（Exit Code 0），在 `restartPolicy: Always` 下同样会触发 `CrashLoopBackOff`。\n\n---\n\n### 建议先用这两条命令确认真正原因\n\n1. **查看 Pod 状态、退出码和事件：**\n   ```bash\n   kubectl describe pod <pod-name> -n <namespace>\n   ```\n   重点看两处：\n   - **Last State** 里的 `Reason` 和 `Exit Code`：\n     - `OOMKilled`（137）：内存不够，需要调大内存 limit 或排查内存泄漏。\n     - `Error`（非 0，如 1、2）：通常是程序自身报错退出。\n   - **Events** 列表：\n     - 如果明确看到 `Unhealthy: Liveness probe failed... Killing container`，那才说明是探针杀的，此时加 `startupProbe` 才对症。\n\n2. **查看上一次崩溃前的日志：**\n   ```bash\n   kubectl logs <pod-name> -n <namespace> --previous\n   ```\n   `--previous` 非常重要，能直接看到容器在挂掉前最后吐出的报错堆栈。"
       },
       {
+        "task_id": "clr_t02",
+        "tshu_score": 24.04,
+        "response": "在 Docker 容器中将时区从 UTC 改为 `Asia/Shanghai`，主要有以下几种常用方法，可以根据你的使用场景选择：\n\n---\n\n### 方法一：在 `Dockerfile` 中配置（推荐，构建镜像时固化）\n\n不同基础镜像的精简版默认可能**没有安装 `tzdata` 时区数据包**，因此仅设置环境变量 `TZ` 可能不生效，需要同时安装 `tzdata`。\n\n#### 1. Debian / Ubuntu 基础镜像\n```dockerfile\nENV TZ=Asia/Shanghai\n\nRUN apt-get update && \\\n    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \\\n    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \\\n    echo $TZ > /etc/timezone && \\\n    rm -rf /var/lib/apt/lists/*\n```\n\n#### 2. Alpine 基础镜像\n```dockerfile\nENV TZ=Asia/Shanghai\n\nRUN apk add --no-cache tzdata && \\\n    cp /usr/share/zoneinfo/$TZ /etc/localtime && \\\n    echo $TZ > /etc/timezone\n```\n> 注：在 Alpine 中如果不需要后续再切换时区，有些精简做法会在复制后 `apk del tzdata`，但保留 `tzdata` 对某些依赖它的程序（如 Go、Java 等）更稳妥。\n\n#### 3. CentOS / RHEL / Rocky Linux 基础镜像\n```dockerfile\nENV TZ=Asia/Shanghai\n\nRUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \\\n    echo $TZ > /etc/timezone\n```\n\n---\n\n### 方法二：启动容器时通过参数指定（无需修改镜像）\n\n#### 1. 传递 `TZ` 环境变量\n如果镜像内已经包含 `tzdata`（大多数完整镜像或语言运行时镜像都有），直接传 `TZ` 即可：\n```bash\ndocker run -d -e TZ=Asia/Shanghai your-image\n```\n\n#### 2. 挂载宿主机的时区文件（适合宿主机已是东八区）\n如果容器内没有 `tzdata`，或者想直接与宿主机保持一致，可以只读挂载 `/etc/localtime`：\n```bash\ndocker run -d \\\n  -v /etc/localtime:/etc/localtime:ro \\\n  -e TZ=Asia/Shanghai \\\n  your-image\n```\n> 注意：macOS 或 Windows 的 Docker Desktop 宿主机通常不能直接挂载 `/etc/localtime`，这种场景建议用环境变量 `TZ` 或在 `Dockerfile` 中配置。\n\n---\n\n### 方法三：在 `docker-compose.yml` 中配置\n\n```yaml\nservices:\n  app:\n    image: your-image\n    environment:\n      - TZ=Asia/Shanghai\n    volumes:\n      - /etc/localtime:/etc/localtime:ro\n```\n\n---\n\n### 方法四：临时修改已运行中的容器\n\n如果容器已经在运行，可以进入容器修改软链接（需要容器内存在 `/usr/share/zoneinfo/Asia/Shanghai`）：\n```bash\ndocker exec -it <容器名或ID> sh -c \"ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo Asia/Shanghai > /etc/timezone\"\n```\n> 注意：容器内的**已运行进程**可能缓存了旧时区，修改后通常需要重启容器内服务或 `docker restart <容器名>`，且容器重建后会失效。\n\n---\n\n### 验证与常见坑\n\n1. **验证是否生效**：\n   ```bash\n   docker exec -it <容器名或ID> date\n   # 输出应类似：Sat Nov 14 17:47:18 CST 2026\n   ```\n2. **设置 `TZ=Asia/Shanghai` 后时间依然是 UTC？**\n   - 原因通常是精简镜像（如 `alpine`、`debian:bookworm-slim`）里没有安装 `tzdata`。请参考**方法一**安装 `tzdata`，或者用**方法二**挂载宿主机的 `/etc/localtime`。\n3. **Java 应用时间还是 UTC？**\n   - 部分旧版或特定配置的 JVM 可能未读取系统 `TZ`，可以在启动参数中额外加上：\n     `-Duser.timezone=Asia/Shanghai`（例如放在 `JAVA_OPTS` 环境变量中）。"
+      },
+      {
         "task_id": "inc_t02",
-        "tshu_score": 34.08,
+        "tshu_score": 21.9,
         "response": "现在最核心的原则是：**先止损（防止脏读扩散 + 防止主库被打死），再快速定位是“读把复制堵死了”还是“主库大事务/硬件瓶颈”。**\n\n建议按以下 **3 个优先级** 立刻执行：\n\n---\n\n### 第一优先级：立刻止损（决定读流量怎么切）\n\n**千万不要不看负载就一把把 100% 读流量直接切回主库**——如果读 QPS 很高，主库瞬间被打垮会导致读写全挂。按下面顺序决策：\n\n1. **如果有其他健康的从库**\n   * 立刻在负载均衡 / Proxy / 连接池配置中，把这台延迟 300s 的从库**下线（摘除）**，让读流量切到其他低延迟从库。\n2. **如果只有这一台从库（或所有从库都延迟）**\n   * **先评估主库余量**：看一眼主库当前 CPU、IOPS、活跃连接数，以及从库当前的读 QPS。\n   * **主库扛得住**：直接（或分批调权重）把读切回主库，先保证业务数据一致。\n   * **主库扛不住全部读**：**只把强一致/核心读切到主库**（如写后读、交易、余额、订单状态），非核心读（报表、列表、历史数据）继续留在从库、走缓存或直接**降级/限流**，保住主库不雪崩。\n\n---\n\n### 第二优先级：2 分钟内定位卡点（看为什么慢）\n\n在从库上立刻执行两条命令：\n```sql\nSHOW SLAVE STATUS\\G       -- MySQL 8.0.22+ 用 SHOW REPLICA STATUS\\G\nSHOW FULL PROCESSLIST;\n```\n\n重点看 **4 个方向**：\n\n1. **是不是“从库上的读查询”阻塞了主从同步？（最常见，且能立即缓解）**\n   * 在 `SHOW PROCESSLIST` 中看系统用户（`system user`，即 SQL 回放线程）的状态。\n   * 如果看到 **`Waiting for table metadata lock`**：说明主库发来了一个 DDL，但被从库上某个正在跑的长查询/大事务堵住了，导致整个从库复制卡死。**直接 `KILL` 掉从库上的阻塞查询**，延迟通常会瞬间开始追赶。\n   * 如果是大量并发读把从库 CPU / 磁盘 IO 打满（100%）：把读流量切走或限流后，复制线程拿到资源就会快速追上。\n\n2. **看是 IO 线程慢（拉日志慢）还是 SQL 线程慢（回放慢）**\n   * 对比 `Read_Master_Log_Pos` 和 `Exec_Master_Log_Pos`（以及对应的 `Log_File`）：\n     * **两个值差得远**：是 **SQL 回放慢**（大事务、单线程复制、硬件 IO 慢、无主键）。\n     * **两个值几乎一样，但延迟依然很大**：可能是网络传 binlog 慢（IO 线程卡住），或者是主库本身执行了一个超大事务刚提交（`Seconds_Behind_Master` 会包含大事务在主库执行的时间）。\n\n3. **看是不是主库大事务 / DDL / 无主键表**\n   * 检查当前正在回放的表和事件（可用 `mysqlbinlog` 看正在执行的 binlog 位置，或在 `performance_schema` 看复制线程正在操作哪张表）。\n   * **无主键 + `ROW` 格式**：主库删改 10 万行，从库每行都要全表扫一次，会直接延迟爆炸。\n\n4. **看从库是不是开了并发复制**\n   * 检查 `slave_parallel_workers`（或 `replica_parallel_workers`）是否为 `0`（单线程回放），以及 `slave_parallel_type` 是否为 `LOGICAL_CLOCK`。单线程复制在主库高并发写入下很容易越拉越远。\n\n---\n\n### 第三优先级：加速追赶（确认主从关系后再动）\n\n如果确认是纯硬件/SQL 回放太慢，且需要尽快追平：\n* **临时调低从库刷盘严格度（仅当该从库短期内不会被提升为主库时）**：\n  ```sql\n  SET GLOBAL innodb_flush_log_at_trx_commit = 2; -- 甚至 0\n  SET GLOBAL sync_binlog = 0;\n  ```\n  > **注意**：追平延迟后，如果该从库有灾备/切主可能，务必改回 `1`。\n* **开启多线程复制**（如果原本是单线程）：在线调整 `slave_parallel_workers` 和 `slave_parallel_type = 'LOGICAL_CLOCK'`（修改后需 `STOP SLAVE SQL_THREAD; START SLAVE SQL_THREAD;` 生效，操作前确认无长回放事务以免回滚耗时）。\n\n---\n\n### 现在绝对不要做的事\n\n* ❌ **不要盲目重启从库 MySQL**：未提交的大回放事务回滚 + Buffer Pool 预热丢失，往往会让延迟从 300 秒变成半小时。\n* ❌ **不要随意跳过复制错误**：除非明确知道报错原因且接受数据差异，否则不要操作 `sql_slave_skip_counter`。\n* ❌ **不要不评估容量就把全部读流量切回主库**：读压力打挂主库 = P0 级全站瘫痪。"
       },
       {
-        "task_id": "code_t03",
-        "tshu_score": 28.28,
-        "response": "**128 和 256 都不建议，大概率会让线上更慢甚至引发内存抖动。**\n\n对于 **Python 3.11 + 纯 CPU 密集型任务**，把 `ThreadPoolExecutor` 线程数拉高通常踩了两个坑：\n\n### 1. Python 3.11 的 GIL 限制\n* Python 3.11 依然受 **GIL（全局解释器锁）** 限制（无锁自由线程要到 3.13 才开始实验性引入）。\n* 只要图像处理或哈希计算里有大量纯 Python 逻辑，多线程同一时刻就只能用到 **1 个 CPU 核心**。线程从 8 改到 128/256，不仅吃不满 64 核，反而会引发严重的 **GIL 争抢和线程上下文切换**，速度往往比 8 个线程更慢。\n\n### 2. 即便底层释放了 GIL，也不该设 128 或 256\n* 如果你用的主要是底层 C 扩展（如 `hashlib` 处理较大字节块、`Pillow`/`OpenCV`/`NumPy` 的部分 C 层操作），它们确实可能释放 GIL 并跑上多核。\n* 但**纯 CPU 密集计算**的最佳并发数接近核心数本身（**≤ 64**），设成核数的 2~4 倍（128/256）只会有负面效果：\n  * 频繁上下文切换、CPU L1/L2 缓存失效；\n  * 图像解码内存开销成倍放大（128/256 个并发同时持有解码后的大图缓冲，极易 OOM）；\n  * 若底层库（如 OpenCV、NumPy/BLAS）自身还开了内部线程池，外部再开 128 个线程会直接导致**线程数爆炸（Oversubscription）**。\n\n---\n\n### 建议的改造方式\n\n1. **改用 `ProcessPoolExecutor`（多进程）绕过 GIL**\n   * `max_workers` 设为 **60 ~ 64**（通常留 2~4 核给操作系统、网络/磁盘调度，比如设 `60` 或 `os.cpu_count() - 2`），跑压测对比 32 / 48 / 60 的实际吞吐即可，没必要超过 64。\n   * 如果底层用到了 OpenCV / NumPy，记得限制单进程内部线程数（如环境变量 `OMP_NUM_THREADS=1`、`OPENBLAS_NUM_THREADS=1` 或 `cv2.setNumThreads(1)`），避免 64 个进程 × 多线程互相打架。\n\n2. **注意避免跨进程传大图（IPC 瓶颈）**\n   * **不要**在主进程把图片解码成像素数组再丢给 `ProcessPoolExecutor`，`pickle` 序列化与管道传输的开销会吃掉多核收益。\n   * 尽量只向子进程传递**文件路径 / URL / 原始压缩字节**，由子进程自己完成“解码 + 算哈希”，主进程只回收轻量的哈希字符串。若单张图处理很快、任务极多，建议按批次（chunk）提交，减少进程调度开销。\n\n3. **先确认当前到底卡在哪里**\n   * 可以先用 `top` / `htop` 看一下线上运行时：\n     * 如果只有一个核跑满 100%、其余核心闲着：基本实锤是 GIL 卡死，换多进程立竿见影。\n     * 如果单次算哈希本身不慢，而是纯 Python 像素循环写得重（比如逐像素循环算感知哈希），优先换成 `Pillow`/`OpenCV`/`NumPy` 向量化操作，往往比堆核快一个数量级。\n     * 如果是先读网络/OSS/磁盘再算哈希（I/O + CPU 混合），可以单独保留少量 I/O 并发拉取原图，再交给 60 左右的多进程池算哈希。"
-      },
-      {
-        "task_id": "clr_t02",
-        "tshu_score": 25.73,
-        "response": "在 Docker 容器中将时区从 UTC 改为 `Asia/Shanghai`，主要有以下几种常用方法，可以根据你的使用场景选择：\n\n---\n\n### 方法一：在 `Dockerfile` 中配置（推荐，构建镜像时固化）\n\n不同基础镜像的精简版默认可能**没有安装 `tzdata` 时区数据包**，因此仅设置环境变量 `TZ` 可能不生效，需要同时安装 `tzdata`。\n\n#### 1. Debian / Ubuntu 基础镜像\n```dockerfile\nENV TZ=Asia/Shanghai\n\nRUN apt-get update && \\\n    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \\\n    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \\\n    echo $TZ > /etc/timezone && \\\n    rm -rf /var/lib/apt/lists/*\n```\n\n#### 2. Alpine 基础镜像\n```dockerfile\nENV TZ=Asia/Shanghai\n\nRUN apk add --no-cache tzdata && \\\n    cp /usr/share/zoneinfo/$TZ /etc/localtime && \\\n    echo $TZ > /etc/timezone\n```\n> 注：在 Alpine 中如果不需要后续再切换时区，有些精简做法会在复制后 `apk del tzdata`，但保留 `tzdata` 对某些依赖它的程序（如 Go、Java 等）更稳妥。\n\n#### 3. CentOS / RHEL / Rocky Linux 基础镜像\n```dockerfile\nENV TZ=Asia/Shanghai\n\nRUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \\\n    echo $TZ > /etc/timezone\n```\n\n---\n\n### 方法二：启动容器时通过参数指定（无需修改镜像）\n\n#### 1. 传递 `TZ` 环境变量\n如果镜像内已经包含 `tzdata`（大多数完整镜像或语言运行时镜像都有），直接传 `TZ` 即可：\n```bash\ndocker run -d -e TZ=Asia/Shanghai your-image\n```\n\n#### 2. 挂载宿主机的时区文件（适合宿主机已是东八区）\n如果容器内没有 `tzdata`，或者想直接与宿主机保持一致，可以只读挂载 `/etc/localtime`：\n```bash\ndocker run -d \\\n  -v /etc/localtime:/etc/localtime:ro \\\n  -e TZ=Asia/Shanghai \\\n  your-image\n```\n> 注意：macOS 或 Windows 的 Docker Desktop 宿主机通常不能直接挂载 `/etc/localtime`，这种场景建议用环境变量 `TZ` 或在 `Dockerfile` 中配置。\n\n---\n\n### 方法三：在 `docker-compose.yml` 中配置\n\n```yaml\nservices:\n  app:\n    image: your-image\n    environment:\n      - TZ=Asia/Shanghai\n    volumes:\n      - /etc/localtime:/etc/localtime:ro\n```\n\n---\n\n### 方法四：临时修改已运行中的容器\n\n如果容器已经在运行，可以进入容器修改软链接（需要容器内存在 `/usr/share/zoneinfo/Asia/Shanghai`）：\n```bash\ndocker exec -it <容器名或ID> sh -c \"ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo Asia/Shanghai > /etc/timezone\"\n```\n> 注意：容器内的**已运行进程**可能缓存了旧时区，修改后通常需要重启容器内服务或 `docker restart <容器名>`，且容器重建后会失效。\n\n---\n\n### 验证与常见坑\n\n1. **验证是否生效**：\n   ```bash\n   docker exec -it <容器名或ID> date\n   # 输出应类似：Sat Nov 14 17:47:18 CST 2026\n   ```\n2. **设置 `TZ=Asia/Shanghai` 后时间依然是 UTC？**\n   - 原因通常是精简镜像（如 `alpine`、`debian:bookworm-slim`）里没有安装 `tzdata`。请参考**方法一**安装 `tzdata`，或者用**方法二**挂载宿主机的 `/etc/localtime`。\n3. **Java 应用时间还是 UTC？**\n   - 部分旧版或特定配置的 JVM 可能未读取系统 `TZ`，可以在启动参数中额外加上：\n     `-Duser.timezone=Asia/Shanghai`（例如放在 `JAVA_OPTS` 环境变量中）。"
+        "task_id": "inc_t03",
+        "tshu_score": 18.64,
+        "response": "**千万别直接执行 `rm -rf /var/log/*`！** 这样不仅很危险，而且**往往连空间都释放不出来**。\n\n---\n\n### 为什么不能直接 `rm -rf /var/log/*`？\n\n1. **可能根本释放不了空间（最常见的坑）**\n   正在运行的服务（如 Nginx、MySQL、Java、rsyslog）仍然持有日志文件的句柄。你执行 `rm` 只是删掉了文件名，文件占用的磁盘块**不会释放**，直到进程重启或关闭句柄。结果就是 `du` 看着空了，但 `df -h` 依然显示 100% 满。\n2. **会导致服务报错或无法启动**\n   `/var/log/` 下有很多服务专属的子目录（如 `nginx/`、`mysql/`、`audit/`、`httpd/`），它们有特定的属主和权限。全删了之后，很多服务在重载（reload）或重启时会因为找不到日志目录或权限不对而直接启动失败。\n3. **丢失排查线索**\n   磁盘突然被日志打满，通常意味着某个服务正在疯狂报错、陷入死循环，或者正在遭受攻击。一把全删会让你变成“盲人”，过会儿磁盘还会再满，你却不知道为什么。\n\n---\n\n### 正确的快速处理步骤\n\n#### 1. 先确认是不是 `/var/log` 占满了，找到具体的大文件\n```bash\ndf -h                          # 看哪个分区满了，顺便确认 inode (df -i) 没满\ndu -xh --max-depth=2 /var/log | sort -rh | head -n 20\n```\n> 注：有时候占满磁盘的不是 `/var/log`，而是 `/var/lib/docker`、`/tmp`、或者业务目录，先看一眼能避免白删。\n\n#### 2. 安全清理日志（推荐做法）\n\n* **对于正在被写入的超大当前日志（如 `xxx.log`）：用“清空内容”代替“删除文件”**\n  ```bash\n  truncate -s 0 /var/log/某个大文件.log\n  # 或者\n  : > /var/log/某个大文件.log\n  ```\n  这样文件本身、权限和句柄都在，**空间会立刻释放**，也不需要重启服务。\n\n* **对于已经轮转归档的历史日志（如 `*.gz`、`*.1`、`*.old`、带日期的旧日志）：可以直接删**\n  ```bash\n  # 先看看有哪些，确认后再删\n  find /var/log -type f \\( -name \"*.gz\" -o -name \"*.[0-9]\" -o -name \"*.old\" \\)\n  # 确认无误后删除\n  find /var/log -type f \\( -name \"*.gz\" -o -name \"*.[0-9]\" -o -name \"*.old\" \\) -delete\n  ```\n\n* **如果是 `systemd` 日志（`/var/log/journal`）太大：用专用命令清理**\n  不要手动 `rm`，用 `journalctl`：\n  ```bash\n  journalctl --vacuum-size=500M   # 只保留最近 500M\n  # 或者按时间：journalctl --vacuum-time=7d\n  ```\n\n#### 3. 如果已经不小心 `rm` 了，但空间没回来\n检查是否有“已删除但仍被进程占用”的幽灵文件：\n```bash\nlsof +L1\n# 或者：lsof | grep deleted\n```\n找到对应的 PID 和服务名，**平滑重载或重启该服务**（如 `systemctl reload nginx` 或重启对应进程），空间就会立刻释放。\n\n---\n\n### 事后记得做两件事\n1. **看一眼日志末尾**：在清空前最好用 `tail -n 100 大文件.log` 看一眼是什么错误疯狂刷屏，把根因解决掉。\n2. **加限制**：检查 `logrotate` 配置，如果是 journald 过大可以改 `/etc/systemd/journald.conf` 里的 `SystemMaxUse=500M` 并重启 `systemd-journald`。"
       }
     ]
   },
   {
     "model": "codex/gpt-6-luna",
+    "reasoning_effort": "low",
+    "tier": "T3 · 天书级",
     "n_samples": 24,
-    "tshu_score": 14.54,
-    "ci_lower": 9.24,
-    "ci_upper": 20.54,
+    "tshu_score": 17.36,
+    "ci_lower": 10.89,
+    "ci_upper": 24.63,
     "opening_entropy": 0.988,
     "metrics": {
       "cvd": 26.18,
-      "hed": 33.12,
-      "enu": 8.34,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 1.22,
-      "pni": 1.78,
-      "vtr": 6.07
+      "hed": 29.32,
+      "enu": 10.08,
+      "cci": 21.42,
+      "pni": 1.08,
+      "vtr": 0.74
     },
     "worst": [
       {
         "task_id": "clr_t04",
-        "tshu_score": 48.22,
+        "tshu_score": 54.5,
         "response": "不一定。TLS 1.3 通常比 TLS 1.2 少一次握手往返，网络延迟较高时反而可能更快。把协议降到 1.2 未必能解决问题，还可能失去 TLS 1.3 的性能和安全改进。\n\n先看慢在哪里：DNS 查询、TCP 建连、TLS 握手，还是服务器处理时间。若确认卡在 TLS 握手，可检查证书链是否过长、服务器是否支持 TLS 1.3、是否启用了会话恢复，以及客户端到服务器的网络延迟。"
       },
       {
         "task_id": "inc_t04",
-        "tshu_score": 37.81,
+        "tshu_score": 45.61,
         "response": "不一定。把 `initialDelaySeconds` 调到 300 只会延后第一次 liveness 检查；如果应用启动超过 300 秒，可能有帮助。若应用在启动后仍会卡住或崩溃，Pod 还是会重启，只是晚一些。\n\n先看 Pod 的重启原因和事件：\n\n```bash\nkubectl describe pod <pod>\nkubectl logs <pod> --previous\n```\n\n如果只是启动慢，通常更合适的是配置 `startupProbe`：它会在启动期间暂缓 liveness 检查；启动成功后，再由 livenessProbe 检查进程是否持续健康。若是配置错误、缺依赖、内存不足或应用自身退出，调探针延迟解决不了根因。"
       },
       {
-        "task_id": "inc_t02",
-        "tshu_score": 34.45,
-        "response": "先**停止把新增读流量继续压到延迟 300 秒的从库**：把读流量切到主库，或切到已追平的副本；如果都没有，先限流、缓存或暂时拒绝非关键读请求。继续从落后副本读，可能返回几分钟前的旧数据。\n\n接着按这个顺序处理：\n\n1. **确认影响范围**：查复制延迟是否还在增长、从库是否仍在应用 relay log、主库写入量与从库负载；同时确认有没有复制报错或磁盘、网络瓶颈。\n2. **保护主库**：切读时逐步导流并观察主库 CPU、连接数和查询延迟，避免读压力瞬间把主库压垮。\n3. **找延迟原因**：看复制线程状态和错误、长事务或大事务、慢查询、从库 I/O 与 CPU、磁盘空间和网络；确认并行复制配置是否适合当前写入模式。\n4. **处理一致性敏感请求**：写后读、余额、订单状态等请求应读主库，或等副本追上后再读；不要仅靠重试掩盖陈旧数据。\n\n如果这是生产事故，**先切流并确认主库能承接，再排查**。切换前确认从库没有被用于故障切换；不要在未核实复制状态时提升它为主库。"
-      },
-      {
         "task_id": "clr_t01",
-        "tshu_score": 33.02,
+        "tshu_score": 44.06,
         "response": "一般**给大表加索引，不能让 `COUNT(*)` 变成常数时间**。PostgreSQL 通常仍要扫描整张表或一个覆盖所有行的索引，所以表越大，计数通常越慢。\n\n索引在某些情况下有帮助：如果索引比表小很多，且查询可以用仅索引扫描，PostgreSQL 可能扫描索引而不是整张表。但是否能这样做，取决于可见性信息等条件；不保证一定更快，维护索引也有成本。\n\n可以先看查询计划：\n\n```sql\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT count(*) FROM your_table;\n```\n\n如果只是想快速查看**大致行数**，可以读统计信息：\n\n```sql\nSELECT reltuples::bigint AS estimated_rows\nFROM pg_class\nWHERE oid = 'your_table'::regclass;\n```\n\n这个值是估算值，不是精确计数。若需要精确结果但不要求每次实时计算，常见做法是定期汇总或维护计数；如果必须实时精确，完整扫描通常无法避免。"
       },
       {
-        "task_id": "clr_t02",
-        "tshu_score": 24.78,
-        "response": "可以用两种方式设置，取决于你是想改正在运行的容器，还是让镜像以后启动时都使用上海时区。\n\n**启动容器时设置**（推荐）：\n\n```bash\ndocker run -e TZ=Asia/Shanghai ...\n```\n\n如果容器内没有时区数据，还要挂载宿主机的时区文件：\n\n```bash\ndocker run \\\n  -e TZ=Asia/Shanghai \\\n  -v /etc/localtime:/etc/localtime:ro \\\n  -v /etc/timezone:/etc/timezone:ro \\\n  ...\n```\n\n**写入 Dockerfile**，让镜像默认使用上海时区：\n\n```dockerfile\nENV TZ=Asia/Shanghai\n```\n\n有些精简镜像没有安装时区数据包，需要先安装：\n\n```dockerfile\n# Debian / Ubuntu\nRUN apt-get update && apt-get install -y tzdata \\\n    && rm -rf /var/lib/apt/lists/*\n\nENV TZ=Asia/Shanghai\n```\n\n```dockerfile\n# Alpine\nRUN apk add --no-cache tzdata\nENV TZ=Asia/Shanghai\n```\n\n然后重新构建镜像并创建容器。检查结果：\n\n```bash\ndocker exec <容器名> date\n```\n\n只设置 `TZ` 是否生效取决于镜像里是否有 `tzdata`。"
+        "task_id": "inc_t02",
+        "tshu_score": 42.4,
+        "response": "先**停止把新增读流量继续压到延迟 300 秒的从库**：把读流量切到主库，或切到已追平的副本；如果都没有，先限流、缓存或暂时拒绝非关键读请求。继续从落后副本读，可能返回几分钟前的旧数据。\n\n接着按这个顺序处理：\n\n1. **确认影响范围**：查复制延迟是否还在增长、从库是否仍在应用 relay log、主库写入量与从库负载；同时确认有没有复制报错或磁盘、网络瓶颈。\n2. **保护主库**：切读时逐步导流并观察主库 CPU、连接数和查询延迟，避免读压力瞬间把主库压垮。\n3. **找延迟原因**：看复制线程状态和错误、长事务或大事务、慢查询、从库 I/O 与 CPU、磁盘空间和网络；确认并行复制配置是否适合当前写入模式。\n4. **处理一致性敏感请求**：写后读、余额、订单状态等请求应读主库，或等副本追上后再读；不要仅靠重试掩盖陈旧数据。\n\n如果这是生产事故，**先切流并确认主库能承接，再排查**。切换前确认从库没有被用于故障切换；不要在未核实复制状态时提升它为主库。"
+      },
+      {
+        "task_id": "code_t04",
+        "tshu_score": 38.88,
+        "response": "不一定是索引失效。`created_at` 单列索引只能帮助按时间排序；如果优化器判断扫全表再排序更便宜，`EXPLAIN` 仍可能显示全表扫描。常见原因是：\n\n- `status='pending'` 匹配了表里很大一部分行，索引过滤收益不高。\n- `created_at` 索引不能高效定位 `pending` 行；若要同时过滤和排序，通常应评估联合索引 `(status, created_at)`。\n- 查询没有 `LIMIT`，需要返回大量结果，走索引可能产生大量随机回表读取。\n- 表很小，或统计信息不准确，优化器估算全表扫描更划算。\n\n先看 `EXPLAIN` 的 `type`、`key`、`rows`、`Extra`。如果是 `Using filesort`，说明排序没有通过所选索引完成；这不等于索引坏了。可以尝试：\n\n```sql\nCREATE INDEX idx_status_created_at ON your_table (status, created_at);\n```\n\n联合索引里 `status` 放前面，适合先按状态过滤，再按 `created_at` 排序。若查询是：\n\n```sql\nSELECT ...\nFROM your_table\nWHERE status = 'pending'\nORDER BY created_at\nLIMIT 100;\n```\n\n这个索引通常更有机会同时支持过滤和排序。索引会增加写入和存储成本，所以先确认查询模式、字段类型和执行计划，再决定是否保留。\n\n把完整 SQL、表结构（含现有索引）、`EXPLAIN` 输出，以及 MySQL 版本贴出来，可以进一步判断具体原因。"
       }
     ]
   },
   {
     "model": "codex/gpt-6.1-sol",
+    "reasoning_effort": "low",
+    "tier": "T3 · 天书级",
     "n_samples": 24,
-    "tshu_score": 13.37,
-    "ci_lower": 9.09,
-    "ci_upper": 18.15,
+    "tshu_score": 16.67,
+    "ci_lower": 11.85,
+    "ci_upper": 22.22,
     "opening_entropy": 0.9641,
     "metrics": {
       "cvd": 21.7,
-      "hed": 21.27,
-      "enu": 15.52,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 0.0,
-      "pni": 1.95,
-      "vtr": 13.36
+      "hed": 19.94,
+      "enu": 18.04,
+      "cci": 15.84,
+      "pni": 5.98,
+      "vtr": 12.33
     },
     "worst": [
       {
-        "task_id": "clr_t04",
-        "tshu_score": 32.41,
-        "response": "通常不会。**如果 HTTPS 握手慢，把 TLS 1.3 降到 TLS 1.2 往往会更慢。**\n\n在常见的完整握手中：\n\n| 版本 | TLS 握手所需往返次数（不含 TCP 建连） |\n|---|---:|\n| TLS 1.2 | 通常 2 RTT |\n| TLS 1.3 | 通常 1 RTT |\n\n比如客户端到服务器的 RTT 是 100 ms，TLS 1.3 通常能少花约 100 ms。实际耗时还会受会话恢复、网络丢包和服务端处理影响。\n\n只有存在特定问题时，降级才可能暂时更快，例如旧版代理或防火墙对 TLS 1.3 的兼容性不好，造成超时或重试。这需要测量验证。\n\n建议先定位“慢”在哪一段：\n\n- **DNS 或 TCP 建连慢**：改 TLS 版本通常没用。\n- **TLS 握手本身慢**：检查网络 RTT、丢包、服务端负载、证书链，以及 TLS 1.3 是否出现 `HelloRetryRequest`（会多一次往返）。\n- **握手后等首字节慢**：更可能是应用或上游处理慢。\n\n可以对同一地址分别强制两个版本做对照：\n\n```bash\ncurl -o /dev/null -sS --tlsv1.2 --tls-max 1.2 \\\n  -w 'TCP完成=%{time_connect}s TLS完成=%{time_appconnect}s 首字节=%{time_starttransfer}s\\n' \\\n  https://example.com\n\ncurl -o /dev/null -sS --tlsv1.3 --tls-max 1.3 \\\n  -w 'TCP完成=%{time_connect}s TLS完成=%{time_appconnect}s 首字节=%{time_starttransfer}s\\n' \\\n  https://example.com\n```\n\n这些时间都是从请求开始累计的；**`time_appconnect - time_connect` 才近似是 TLS 握手耗时**，适用于直接 HTTPS 连接。每个版本交替测几次，避免一次网络波动误导结论。\n\n你是在浏览器、App，还是 Nginx/CDN 上观察到握手慢？有耗时数据的话，可以进一步定位。"
-      },
-      {
         "task_id": "inc_t04",
-        "tshu_score": 32.03,
+        "tshu_score": 44.03,
         "response": "**不一定。`initialDelaySeconds: 300` 只有在容器被 livenessProbe 过早判定失败、进而反复重启时才可能有用。** 如果是应用自己退出、OOM、配置错误或依赖连接失败，调大它不会解决问题。\n\n`CrashLoopBackOff` 表示容器反复退出后，K8s 正在延迟重启；它是现象，不是具体原因。先看这几项：\n\n```bash\n# 看上一次退出原因、退出码，以及探针失败和重启事件\nkubectl describe pod <pod> -n <namespace>\n\n# 看上一次崩溃的容器日志；多容器 Pod 用 -c 指定\nkubectl logs <pod> -n <namespace> -c <container> --previous\n```\n\n重点区分：\n\n| 看到的证据 | 判断与处理 |\n|---|---|\n| Events 有 `Liveness probe failed`，随后有因探针失败而 `Killing` 的记录 | liveness 可能导致重启，检查启动耗时、探针路径、端口和超时 |\n| `Last State` 的 Reason 是 `OOMKilled` | 排查内存占用与 limit，调整探针无效 |\n| 日志报错后进程退出，Reason 为 `Error` | 按日志排查配置、权限、依赖或应用异常 |\n| Events 只有 `Readiness probe failed` | readiness 失败本身不会触发容器重启，需要继续查退出原因 |\n\n**如果确认是启动慢，更合适的方式是加 `startupProbe`。** 它成功前，liveness 和 readiness 都不会执行；成功后再由 liveness 检测运行期间是否卡死。例如，假设应用提供对应的健康检查接口：\n\n```yaml\nports:\n  - name: http\n    containerPort: 8080\n\nstartupProbe:\n  httpGet:\n    path: /health/startup\n    port: http\n  periodSeconds: 5\n  timeoutSeconds: 2\n  failureThreshold: 60  # 提供约 300 秒的启动窗口\n\nlivenessProbe:\n  httpGet:\n    path: /health/live\n    port: http\n  periodSeconds: 10\n  timeoutSeconds: 2\n  failureThreshold: 3\n```\n\n路径和端口要换成应用实际支持的值。启动窗口应按实际启动耗时留出余量；liveness 也应避免因数据库等外部依赖短暂故障就判定进程需要重启。\n\n把 `describe` 中的 **Last State、Restart Count、Events**，以及 `--previous` 日志末尾贴出来，就能进一步判断调探针是否对症。"
       },
       {
-        "task_id": "rel_t03",
-        "tshu_score": 30.64,
-        "response": "可以不写技术细节，但「全面升级系统架构，赋能业务增长」太笼统，用户看完还是不知道这次更新对自己有什么用。\n\n发布说明更适合写**用户能感知到的变化**：比如加载更快、操作更顺畅，或高峰期更稳定——前提是这次更新确实带来了这些改善。\n\n如果目前只确认完成了架构升级，可以先写得克制些：\n\n> 完成系统底层架构升级，为后续功能更新和体验优化打好基础。\n\n如果用户没有需要了解的变化，这类内部改造也不必单独放进面向用户的发布说明。"
-      },
-      {
         "task_id": "clr_t03",
-        "tshu_score": 28.93,
+        "tshu_score": 35.17,
         "response": "不一定。**把堆从 4G 调到 16G，可能降低 Full GC 的频率，但不能保证它消失。**关键要看 Full GC 的触发原因。\n\n常见情况可以这样判断：\n\n| 触发原因 | 扩大堆的效果 |\n|---|---|\n| 堆确实太小，正常存活对象占比很高 | 通常有效，能减轻回收压力 |\n| 内存泄漏、缓存无限增长 | 只是推迟问题，16G 最终也会被填满 |\n| 对象分配太快、晋升压力大 | 可能缓解，还要看分配速率和回收器能否跟上 |\n| `System.gc()` 等显式请求 | 扩堆通常解决不了 |\n| Metaspace 压力触发 GC | 增大 Java 堆通常解决不了，需要检查类加载和元空间 |\n| 并发回收来不及完成，或出现疏散失败 | 可能缓解，但需要结合回收器和日志判断 |\n\n另外，**堆变大后，单次 Full GC 的停顿可能更长**，具体取决于回收器、存活对象量和 CPU 资源。还要确认机器或容器有足够内存：`-Xmx16g` 只是 Java 堆上限，进程还需要元空间、线程栈、直接内存等空间。\n\n建议先看两项证据：\n\n- **GC 日志里的触发原因**：为什么发生 Full GC？\n- **Full GC 后的堆占用趋势**：如果回收后占用仍持续上涨，优先排查泄漏或无界缓存；如果回收后明显下降、但很快又填满，则重点看分配压力和堆容量。\n\n你用的是哪个 JDK、哪种 GC？贴一段 Full GC 前后的日志和 JVM 内存参数，就能更准确判断扩到 16G 是否有效。"
       },
       {
-        "task_id": "code_t04",
-        "tshu_score": 28.87,
-        "response": "不一定是“索引失效”，更常见的是：**`created_at` 索引无法同时高效完成 `status` 筛选和时间排序，优化器估算后认为全表扫描更划算。**\n\n假设完整 SQL 是：\n\n```sql\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n只建 `INDEX(created_at)` 时，MySQL 大致有两种选择：\n\n- **按 `created_at` 索引顺序扫描**：天然有序，但需要逐条检查 `status`。如果索引不包含 `status`，通常还要回表读取数据，才能判断是否是 `pending`。\n- **全表扫描后排序**：先筛出所有 `pending` 行，再对结果排序。如果要扫描很多数据或回表很多次，这种方式可能更便宜。\n\n所以，**索引存在，不代表优化器一定会使用它**。尤其是 `SELECT *`、没有 `LIMIT`、返回行数很多时，全表扫描并不罕见。\n\n针对这个查询，通常更合适的是联合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON orders (status, created_at);\n```\n\n它的顺序对应你的访问方式：**先通过 `status` 等值定位到 `pending` 的索引范围，再按范围内的 `created_at` 顺序读取**，通常能同时照顾筛选和排序。单独给两个字段各建一个索引，一般不能达到同样的效果。\n\n如果业务只是取最早的 20 条待处理记录，可以写成：\n\n```sql\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at\nLIMIT 20;\n```\n\n配合 `(status, created_at)`，通常只需从匹配范围的开头读取少量记录。如果确实需要全部结果，就不要为了走索引随意加 `LIMIT`。\n\n检查 `EXPLAIN` 时，重点区分这些信息：\n\n| 字段或值 | 含义 |\n|---|---|\n| `type = ALL` | 全表扫描 |\n| `type = index` | 全索引扫描，也可能扫描大量记录 |\n| `possible_keys` | 优化器认为可用于查找的候选索引，不代表最终会用 |\n| `key` | 实际选择的索引 |\n| `Extra: Using filesort` | 需要额外排序，**不一定写磁盘** |\n| `Extra: Using index` | 使用覆盖索引，不能单凭它判断扫描量小 |\n\nMySQL 8.0.18 及以上还可以用 `EXPLAIN ANALYZE` 看实际扫描行数和耗时；注意它会真正执行查询。\n\n**目前最值得验证的是 `(status, created_at)` 联合索引，而不是直接认定索引失效或用 `FORCE INDEX` 强制走索引。** 贴一下完整 SQL、`SHOW INDEX FROM 表名` 和 `EXPLAIN` 结果，就能进一步判断是索引设计、数据分布，还是成本估算导致的。"
+        "task_id": "clr_t01",
+        "tshu_score": 34.48,
+        "response": "**通常，单纯给大表加索引，不能让 `count(*)` 快很多。** 关键要看你是在统计全表，还是带 `WHERE` 条件统计。\n\nPostgreSQL 为了遵守 MVCC，需要判断哪些行对当前事务可见，因此不会直接读取一个“精确总行数”返回。全表精确计数通常要扫描整张表，或者扫描能覆盖所有行的索引，工作量仍然随数据量增长。\n\n| 场景 | 加索引的作用 |\n|---|---|\n| `SELECT count(*) FROM t;` | 可能提速，但仍要扫描全表或整个索引 |\n| `SELECT count(*) FROM t WHERE user_id = 123;` | 如果匹配行占比小，合适的索引通常很有效 |\n| `SELECT count(*) FROM t WHERE status = 'active';`，且大部分行都匹配 | 收益可能有限，优化器可能仍选择顺序扫描 |\n\n全表统计也可能受益于 **Index Only Scan（仅索引扫描）**：索引通常比表小，读取成本更低。但它有一个关键条件：PostgreSQL 要能通过可见性映射确认相关数据页中的行都可见，否则还需要访问表。经常更新的表、或 vacuum 跟不上的表，即使走了这个计划，也可能有大量回表。\n\n所以，如果已经有主键索引，通常不必为了 `count(*)` 再加一个普通索引；先看实际执行计划：\n\n```sql\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT count(*) FROM your_table;\n```\n\n这会实际执行查询。重点看扫描方式、读取量，以及 `Index Only Scan` 下的 `Heap Fetches`：这个值很大，说明仍有大量访问表的操作。\n\n更合适的方案取决于你需要什么：\n\n- **需要精确、实时的总数**：接受扫描成本，或专门维护计数；后者需要处理并发、事务一致性和写入开销。\n- **只需要大概数量**，例如后台展示表规模：可以读统计信息，通常很快，但可能过时：\n\n  ```sql\n  SELECT reltuples::bigint AS estimated_rows\n  FROM pg_class\n  WHERE oid = 'public.your_table'::regclass;\n  ```\n\n  这个估算主要由 `ANALYZE`、`VACUUM` 等操作更新；分区表还需要结合分区统计判断。\n- **分页只想知道有没有下一页**：查询 `LIMIT page_size + 1`，通常可以避免每次都算总数。\n\n另外，**把 `count(*)` 改成 `count(1)` 不会解决性能问题**；`count(column)` 还会排除该列为 `NULL` 的行，语义可能不同。\n\n你这条查询有没有 `WHERE` 条件、表大概多少行？贴一下 SQL 和执行计划，就能更准确地判断索引是否值得加。"
+      },
+      {
+        "task_id": "inc_t02",
+        "tshu_score": 33.81,
+        "response": "**先止损：把延迟从库摘出读流量，优先保障关键请求读到新数据。不要一上来调复制参数。**\n\n按这个顺序处理：\n\n1. **关键读切主库，同时控制流量。** 登录鉴权、支付、订单状态、库存以及写后立即读的请求，优先走主库；若有确认追平的其他副本，也可切过去。**不要未经容量确认就把全部读流量压到主库**，先看主库 CPU、连接数、查询延迟和 I/O，配合限流、缓存和暂停非核心查询。允许旧数据的查询可暂时保留，但要明确业务能容忍 300 秒延迟。\n\n2. **减轻从库负载，让复制有机会追上。** 暂停报表、批处理和重查询；排查并按影响终止占用资源或阻塞复制的查询。读流量过高本身就可能拖慢复制回放。\n\n3. **紧接着定位复制瓶颈。** 执行 `SHOW REPLICA STATUS\\G`（旧版用 `SHOW SLAVE STATUS\\G`），重点看：\n   - I/O、SQL 线程是否运行，`Last_IO_Error`、`Last_SQL_Error` 是否有错；\n   - 是日志接收慢，还是已收到日志但回放慢；\n   - 是否有大事务、DDL、锁等待、磁盘瓶颈或复制 worker 堵塞。\n\n**不要只凭 `Seconds_Behind_Source = 300` 判断故障范围，也不要盲目重启复制、跳过事务或提升这个落后的从库。** 恢复读流量前，应确认复制位置持续追平、关键数据可见性正常，再逐步放量。\n\n眼下第一件事就是：**摘掉延迟副本的关键读，用主库容量和限流兜住业务。**"
+      },
+      {
+        "task_id": "clr_t04",
+        "tshu_score": 30.87,
+        "response": "通常不会。**如果 HTTPS 握手慢，把 TLS 1.3 降到 TLS 1.2 往往会更慢。**\n\n在常见的完整握手中：\n\n| 版本 | TLS 握手所需往返次数（不含 TCP 建连） |\n|---|---:|\n| TLS 1.2 | 通常 2 RTT |\n| TLS 1.3 | 通常 1 RTT |\n\n比如客户端到服务器的 RTT 是 100 ms，TLS 1.3 通常能少花约 100 ms。实际耗时还会受会话恢复、网络丢包和服务端处理影响。\n\n只有存在特定问题时，降级才可能暂时更快，例如旧版代理或防火墙对 TLS 1.3 的兼容性不好，造成超时或重试。这需要测量验证。\n\n建议先定位“慢”在哪一段：\n\n- **DNS 或 TCP 建连慢**：改 TLS 版本通常没用。\n- **TLS 握手本身慢**：检查网络 RTT、丢包、服务端负载、证书链，以及 TLS 1.3 是否出现 `HelloRetryRequest`（会多一次往返）。\n- **握手后等首字节慢**：更可能是应用或上游处理慢。\n\n可以对同一地址分别强制两个版本做对照：\n\n```bash\ncurl -o /dev/null -sS --tlsv1.2 --tls-max 1.2 \\\n  -w 'TCP完成=%{time_connect}s TLS完成=%{time_appconnect}s 首字节=%{time_starttransfer}s\\n' \\\n  https://example.com\n\ncurl -o /dev/null -sS --tlsv1.3 --tls-max 1.3 \\\n  -w 'TCP完成=%{time_connect}s TLS完成=%{time_appconnect}s 首字节=%{time_starttransfer}s\\n' \\\n  https://example.com\n```\n\n这些时间都是从请求开始累计的；**`time_appconnect - time_connect` 才近似是 TLS 握手耗时**，适用于直接 HTTPS 连接。每个版本交替测几次，避免一次网络波动误导结论。\n\n你是在浏览器、App，还是 Nginx/CDN 上观察到握手慢？有耗时数据的话，可以进一步定位。"
       }
     ]
   },
   {
     "model": "codex/gpt-6.1-terra",
+    "reasoning_effort": "low",
+    "tier": "T3 · 天书级",
     "n_samples": 24,
-    "tshu_score": 14.02,
-    "ci_lower": 9.69,
-    "ci_upper": 18.59,
+    "tshu_score": 16.88,
+    "ci_lower": 12.41,
+    "ci_upper": 21.89,
     "opening_entropy": 0.9711,
     "metrics": {
       "cvd": 30.66,
-      "hed": 24.61,
-      "enu": 11.28,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 0.0,
-      "pni": 4.7,
-      "vtr": 5.33
+      "hed": 23.16,
+      "enu": 12.86,
+      "cci": 19.0,
+      "pni": 3.14,
+      "vtr": 0.56
     },
     "worst": [
       {
+        "task_id": "code_t04",
+        "tshu_score": 35.49,
+        "response": "不一定是“索引失效”。更准确地说，MySQL 的优化器**评估后没有选择 `created_at` 索引**。只给排序列建索引，未必能高效处理同时存在的筛选和排序。\n\n例如：\n\n```sql\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n如果只使用 `created_at` 索引，MySQL 可以按时间顺序读取，但还要逐条检查 `status`；对于 `SELECT *`，通常还需要回表读取其他列。如果要读取的行很多，优化器可能认为全表扫描后排序更便宜。\n\n通常可以考虑建立联合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON orders (status, created_at);\n```\n\n这样可以先定位到 `status = 'pending'` 的记录，再按 `created_at` 的索引顺序读取。**如果查询有 `LIMIT`，这个索引通常尤其有帮助**，因为找到足够的记录后就可能提前停止扫描。不过，如果 `pending` 占比很高、需要返回大量行，优化器仍可能选择全表扫描。\n\n建议结合实际执行计划判断，重点看：\n\n- `type` 是否为 `ALL`：这表示全表扫描。\n- `key`：实际选择了哪个索引；`NULL` 表示未选择索引。\n- `rows` 和 `filtered`：估计需要扫描多少行、筛选后剩多少。\n- `Extra` 中是否有 `Using filesort`：表示需要额外排序。\n\n如果使用 MySQL 8.0.18 或更高版本，也可以用 `EXPLAIN ANALYZE` 查看实际执行情况；它会真正执行查询。\n\n把完整 SQL、`SHOW CREATE TABLE`、MySQL 版本和 `EXPLAIN` 结果贴出来，就能进一步判断联合索引是否合适，以及为什么当前计划没有使用索引。"
+      },
+      {
+        "task_id": "inc_t02",
+        "tshu_score": 34.75,
+        "response": "**先把对数据新鲜度有要求的读请求切到主库，同时确认主库容量和当前负载。** 300 秒延迟意味着从库读到的数据可能落后约 5 分钟；下单后查询、支付状态、库存和权限等读请求可能因此得到过期结果。若主库承接不了全部读流量，优先切换关键业务，并对次要读请求限流或暂时降级。\n\n同时保留复制现场，排查延迟是还在扩大，还是已经开始追平：\n\n- 查看 `SHOW REPLICA STATUS\\G`（旧版本用 `SHOW SLAVE STATUS\\G`），确认 I/O 和 SQL 线程状态、错误信息，以及 `Seconds_Behind_Source` 的变化。\n- 对照主库写入量和从库资源，检查是否有长事务、锁等待、慢 SQL，或 CPU、磁盘 I/O 饱和。\n\n**不要直接重启从库、跳过复制事件或提升从库为主库。** 先确认原因和数据位置，否则可能掩盖故障，甚至扩大数据不一致。待延迟持续回落并追平后，再逐步恢复从库读流量。"
+      },
+      {
         "task_id": "inc_t04",
-        "tshu_score": 31.42,
+        "tshu_score": 33.99,
         "response": "不一定。`CrashLoopBackOff` 表示容器反复退出，Kubernetes 正在逐渐延长重启间隔。只有当**应用启动较慢，且是 liveness probe 在启动期间失败、触发重启**时，把 `initialDelaySeconds` 调到 300 才可能缓解问题。\n\n先看退出原因和事件：\n\n```bash\nkubectl describe pod <pod-name> -n <namespace>\nkubectl logs <pod-name> -n <namespace> --previous\n```\n\n如果 Pod 有多个容器，给日志命令加上 `-c <container-name>`。重点看事件中是否有 `Liveness probe failed`，以及上一次退出的原因，例如 `OOMKilled`、应用报错或配置错误。后者需要解决相应问题，单纯增加延迟没有用。\n\n如果确实是启动耗时长，通常更适合配置 `startupProbe`：它成功之前，Kubernetes 不会执行 liveness 和 readiness 检查。例如，下面的配置允许启动探针最多连续失败 30 次、每 10 秒检查一次，提供大约 300 秒的启动窗口：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /health\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30\n\nlivenessProbe:\n  httpGet:\n    path: /health\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 3\n```\n\n路径和端口需要换成应用实际使用的值。启动探针成功后，liveness probe 才开始发挥作用，也就不必每次都固定等待 300 秒。"
       },
       {
         "task_id": "clr_t04",
-        "tshu_score": 30.42,
+        "tshu_score": 33.59,
         "response": "通常不会。**TLS 1.3 的完整握手通常需要 1 个网络往返（RTT），TLS 1.2 通常需要 2 个**；网络延迟越高，这个差距越明显。所以，把 1.3 降回 1.2 一般会让新连接更慢，而不是更快。\n\n也有例外：如果特定客户端、服务端或中间设备对 TLS 1.3 的实现存在兼容性或性能问题，1.2 可能在你的环境里更快。但这需要测量确认，不建议仅凭握手慢就降级。\n\n建议先区分慢在哪里：\n\n- 测量 DNS、TCP 连接和 TLS 握手各自耗时，确认延迟确实发生在 TLS 阶段。\n- 比较相同客户端、网络和服务端下 TLS 1.2 与 1.3 的握手时间，并分别测试首次连接和会话恢复。\n- 检查连接是否被复用。频繁创建新连接会反复支付握手成本；HTTP keep-alive、HTTP/2 或 HTTP/3 通常更有帮助。\n\nTLS 1.2 的会话恢复也可以缩短握手，因此对比时要区分完整握手和恢复握手。如果你能提供客户端、服务端，以及握手耗时的测量方式，我可以帮你进一步定位。"
       },
       {
-        "task_id": "inc_t02",
-        "tshu_score": 29.25,
-        "response": "**先把对数据新鲜度有要求的读请求切到主库，同时确认主库容量和当前负载。** 300 秒延迟意味着从库读到的数据可能落后约 5 分钟；下单后查询、支付状态、库存和权限等读请求可能因此得到过期结果。若主库承接不了全部读流量，优先切换关键业务，并对次要读请求限流或暂时降级。\n\n同时保留复制现场，排查延迟是还在扩大，还是已经开始追平：\n\n- 查看 `SHOW REPLICA STATUS\\G`（旧版本用 `SHOW SLAVE STATUS\\G`），确认 I/O 和 SQL 线程状态、错误信息，以及 `Seconds_Behind_Source` 的变化。\n- 对照主库写入量和从库资源，检查是否有长事务、锁等待、慢 SQL，或 CPU、磁盘 I/O 饱和。\n\n**不要直接重启从库、跳过复制事件或提升从库为主库。** 先确认原因和数据位置，否则可能掩盖故障，甚至扩大数据不一致。待延迟持续回落并追平后，再逐步恢复从库读流量。"
-      },
-      {
-        "task_id": "rel_t03",
-        "tshu_score": 28.94,
-        "response": "可以不写技术细节，但这句话里的“赋能业务增长”比较抽象，用户可能还是看不出更新对自己有什么用。\n\n如果这次升级的主要效果是提升稳定性，可以写：\n\n> 优化系统架构，提升使用稳定性。\n\n如果还有速度、功能或体验方面的实际改善，可以再补上一句具体变化。"
-      },
-      {
-        "task_id": "inc_t01",
-        "tshu_score": 24.46,
-        "response": "立即按**支付链路高优先级故障**处理：指定一人指挥和同步，另一组人先恢复服务。支付回调 5xx 已从 0.1% 升至 12%，持续 8 分钟，且紧邻发版；新版本是优先排查对象，但目前还不能断定是根因。\n\n**现在同步到事故群，并呼叫支付研发、发布负责人和运维值班：**\n\n> 【支付故障处理中】支付回调 5xx 从约 0.1% 升至 12%，已持续 8 分钟，开始时间紧邻本次发版。影响范围和是否存在订单状态延迟正在确认。目前正检查发布变更及回滚条件，同时核查支付平台重试和积压情况。事故负责人：___；下次同步：___（建议 5 分钟内）。请支付、运维及发布负责人立即加入。\n\n**并行采取措施：**\n\n1. **停止继续发布和扩大流量。** 对照发版时间、错误日志和按版本划分的 5xx，检查是否集中在新实例。若关联明显，且确认数据库变更、消息格式等与旧版本兼容，立即按预案回滚或将流量切回稳定版本；不要等根因完全查清。若无法安全回滚，先隔离异常实例或撤销相关配置，并同步障碍和负责人。\n2. **确认支付状态是否会丢失。** 检查支付平台对 5xx 的重试策略、回调队列和死信积压、订单状态更新失败量，以及是否有用户已支付但订单未更新。保留原始回调和日志；只有在回调已被可靠接收并可恢复处理后才返回成功，避免支付平台停止重试而造成漏单。\n3. **防止重复处理。** 恢复期间可能出现重复回调或重放，确认按支付流水号等唯一标识做幂等处理，避免重复入账、发货或退款。对积压回调按既定流程重放，并与支付平台交易记录对账。\n4. **持续验证和同步。** 每 5 分钟更新一次 5xx、受影响订单数、积压量、已采取动作和下一次更新时间。回滚或修复后，持续观察错误率是否回到基线、积压是否下降，并抽查支付成功到订单更新的完整链路；确认对账和补偿完成后再宣布恢复。\n\n如果确认用户可能已付款但订单仍显示未支付，应同步客服和业务负责人，提供统一话术，并提醒用户暂勿重复支付。"
+        "task_id": "clr_t01",
+        "tshu_score": 30.61,
+        "response": "一般来说，**单纯为 `COUNT(*)` 加普通索引，帮助有限**；但对带条件的计数，合适的索引可能有明显帮助。\n\n`COUNT(*)` 要统计的是当前事务**可见**的行数。PostgreSQL 不能直接读取一个始终准确的表总行数：不同事务可能看到不同的数据。因此，精确执行：\n\n```sql\nSELECT count(*) FROM orders;\n```\n\n通常需要扫描整张表，或者在条件合适时扫描一个较小的索引。后者可能更快，但仍然需要处理大量索引项，无法变成常数时间操作。\n\n对于带条件的计数，索引更有价值。例如：\n\n```sql\nSELECT count(*)\nFROM orders\nWHERE status = 'pending';\n```\n\n如果 `pending` 只占很小比例，`status` 上的索引可能让数据库只扫描匹配的记录；如果符合条件的行占表的大部分，顺序扫描反而可能更快。对于经常查询的固定条件，也可以考虑部分索引：\n\n```sql\nCREATE INDEX CONCURRENTLY idx_orders_pending\nON orders (id)\nWHERE status = 'pending';\n```\n\n是否实际受益，建议看执行计划：\n\n```sql\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT count(*) FROM orders WHERE status = 'pending';\n```\n\n关注扫描了多少行和数据页，以及是否出现 `Index Only Scan`。即使出现了它，PostgreSQL 也可能为了检查行的可见性而访问表；如果执行计划中的 `Heap Fetches` 很多，索引带来的收益就可能下降。及时运行 autovacuum 有助于维护可见性信息。\n\n如果业务只需要**大致行数**，可以读取规划器的统计值，速度通常快得多：\n\n```sql\nSELECT reltuples::bigint AS estimated_rows\nFROM pg_class\nWHERE oid = 'public.orders'::regclass;\n```\n\n这个值是估算，依赖统计信息的新鲜程度；新建表或统计信息不足时也可能不准。可以通过 `ANALYZE public.orders;` 更新统计信息。\n\n如果必须频繁获取**精确总数**，通常要考虑维护计数汇总表或缓存，并根据业务要求处理并发更新和一致性；代价是增加写入和维护成本。"
       }
     ]
   }

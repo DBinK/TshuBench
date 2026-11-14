@@ -77,12 +77,13 @@ async def call_once(
                 think_chars=len(reasoning) + inline_chars,
                 latency_ms=round((time.perf_counter() - started) * 1000, 1),
                 thinking=reasoning,
+                reasoning_effort=reasoning_effort,
             )
         except Exception as exc:  # noqa: BLE001 - 网络重试需要兜底
             last_error = exc
             await asyncio.sleep(2**attempt)
     logger.error(f"{task.id} 调用失败：{last_error}")
-    return Sample(task_id=task.id, model=model, response="")
+    return Sample(task_id=task.id, model=model, response="", reasoning_effort=reasoning_effort)
 
 
 def tidy_response(task: Task) -> str:
@@ -131,6 +132,7 @@ def write_jsonl(path: Path, samples: list[Sample]) -> None:
                 "think_chars": s.think_chars,
                 "latency_ms": s.latency_ms,
                 "thinking": s.thinking,
+                "reasoning_effort": s.reasoning_effort,
             },
             ensure_ascii=False,
         )
@@ -141,40 +143,97 @@ def write_jsonl(path: Path, samples: list[Sample]) -> None:
 
 
 def run_demo(tasks: dict[str, Task], prefix: str) -> None:
-    tidy = [Sample(t, "demo-tidy", tidy_response(task)) for t, task in tasks.items()]
-    slop = [Sample(t, "demo-slop", slop_response(task)) for t, task in tasks.items()]
+    tidy = [Sample(task_id=t, model="demo-tidy", response=tidy_response(task)) for t, task in tasks.items()]
+    slop = [Sample(task_id=t, model="demo-slop", response=slop_response(task)) for t, task in tasks.items()]
     base = Path(prefix)
     write_jsonl(base.with_name(base.name + "_tidy.jsonl"), tidy)
     write_jsonl(base.with_name(base.name + "_slop.jsonl"), slop)
 
 
-async def run_live(args: argparse.Namespace, tasks: dict[str, Task]) -> None:
-    api_key = os.environ.get(args.api_key_env, "")
+async def execute_live(
+    tasks: dict[str, Task],
+    *,
+    model: str,
+    base_url: str,
+    api_key_env: str,
+    out: str | Path,
+    concurrency: int = 8,
+    temperature: float = 0.3,
+    max_tokens: int = 8192,
+    reasoning_effort: str = "",
+    timeout: float = 180.0,
+    limit: int = 0,
+) -> None:
+    """并发采样指定模型并将结果写入 JSONL。"""
+    api_key = os.environ.get(api_key_env, "")
     if not api_key:
-        raise SystemExit(f"环境变量 {args.api_key_env} 为空")
-    semaphore = asyncio.Semaphore(args.concurrency)
-    selected = list(tasks.values())[: args.limit] if args.limit else list(tasks.values())
+        raise SystemExit(f"环境变量 {api_key_env} 为空")
+    semaphore = asyncio.Semaphore(concurrency)
+    selected = list(tasks.values())[:limit] if limit else list(tasks.values())
 
-    async with httpx.AsyncClient(timeout=args.timeout, trust_env=False) as client:
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
         async def worker(task: Task) -> Sample:
             async with semaphore:
                 return await call_once(
                     client,
-                    args.base_url,
+                    base_url,
                     api_key,
-                    args.model,
+                    model,
                     task,
-                    args.temperature,
-                    args.max_tokens,
-                    args.reasoning_effort,
+                    temperature,
+                    max_tokens,
+                    reasoning_effort,
                 )
 
         samples = await asyncio.gather(*(worker(t) for t in selected))
-    write_jsonl(Path(args.out), list(samples))
+    write_jsonl(Path(out), list(samples))
 
 
 def safe_name(model: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", model).strip("_")
+
+
+def execute_models(
+    tasks_path: str | Path,
+    *,
+    models: list[str],
+    base_url: str,
+    api_key_env: str,
+    out_dir: str | Path,
+    concurrency: int = 8,
+    temperature: float = 0.3,
+    max_tokens: int = 8192,
+    reasoning_effort: str = "",
+    timeout: float = 180.0,
+    limit: int = 0,
+) -> list[Path]:
+    """按模型配置顺序完成采样，返回写出的 JSONL 路径列表。"""
+    tasks = load_tasks(tasks_path)
+    logger.info(f"载入 {len(tasks)} 道题")
+    out_base = Path(out_dir)
+    written: list[Path] = []
+    for spec in models:
+        model, _, effort = spec.partition(":")
+        eff = effort or reasoning_effort
+        target = out_base / f"{safe_name(model)}.jsonl"
+        logger.info(f"开始 {model}，思考档位 {eff or '默认'}")
+        asyncio.run(
+            execute_live(
+                tasks,
+                model=model,
+                base_url=base_url,
+                api_key_env=api_key_env,
+                out=target,
+                concurrency=concurrency,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                reasoning_effort=eff,
+                timeout=timeout,
+                limit=limit,
+            )
+        )
+        written.append(target)
+    return written
 
 
 def main() -> None:
@@ -200,22 +259,49 @@ def main() -> None:
     parser.add_argument("--out-prefix", default="runs/demo")
     args = parser.parse_args()
 
-    tasks = load_tasks(args.tasks)
-    logger.info(f"载入 {len(tasks)} 道题")
-
     if args.demo:
+        tasks = load_tasks(args.tasks)
+        logger.info(f"载入 {len(tasks)} 道题")
         run_demo(tasks, args.out_prefix)
         return
 
     specs = args.models or [args.model]
-    out_dir = Path(args.out_dir)
-    for spec in specs:
-        model, _, effort = spec.partition(":")
-        args.model = model
-        args.reasoning_effort = effort or args.reasoning_effort
-        args.out = str(out_dir / f"{safe_name(model)}.jsonl")
-        logger.info(f"开始 {model}，思考档位 {args.reasoning_effort or '默认'}")
-        asyncio.run(run_live(args, tasks))
+    if not args.models and args.out != "runs/model.jsonl":
+        tasks = load_tasks(args.tasks)
+        logger.info(f"载入 {len(tasks)} 道题")
+        model, _, effort = args.model.partition(":")
+        eff = effort or args.reasoning_effort
+        logger.info(f"开始 {model}，思考档位 {eff or '默认'}")
+        asyncio.run(
+            execute_live(
+                tasks,
+                model=model,
+                base_url=args.base_url,
+                api_key_env=args.api_key_env,
+                out=args.out,
+                concurrency=args.concurrency,
+                temperature=args.temperature,
+                max_tokens=args.max_tokens,
+                reasoning_effort=eff,
+                timeout=args.timeout,
+                limit=args.limit,
+            )
+        )
+        return
+
+    execute_models(
+        args.tasks,
+        models=specs,
+        base_url=args.base_url,
+        api_key_env=args.api_key_env,
+        out_dir=args.out_dir,
+        concurrency=args.concurrency,
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+        reasoning_effort=args.reasoning_effort,
+        timeout=args.timeout,
+        limit=args.limit,
+    )
 
 
 if __name__ == "__main__":
