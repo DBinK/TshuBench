@@ -83,6 +83,7 @@ HEDGE_WORDS = (
     "更常见的情况是",
     "一般而言",
     "通常来说",
+    "通常",
     "理论上",
     "原则上",
     "不代表",
@@ -90,6 +91,7 @@ HEDGE_WORDS = (
     "需要注意的是",
     "需要说明的是",
 )
+HEDGE_RE = re.compile("|".join(sorted(HEDGE_WORDS, key=len, reverse=True)))
 SOFT_OPENERS = ("不一定", "不建议", "不太建议", "一般不会", "通常不会", "这句可以", "可以先", "我先看", "我先找", "我先确认")
 CRISP_OPENERS = (
     "千万别",
@@ -103,6 +105,8 @@ CRISP_OPENERS = (
     "不行",
     "不要",
     "没用",
+    "都不合适",
+    "都不会",
     "大概率不能",
     "大概率不会",
     "不正确",
@@ -155,9 +159,12 @@ PSEUDO_CONTRAST = re.compile(r"不是[^，。]{1,20}而是|与其说[^，。]{1,
 SUPPORT_CLOSING = re.compile(r"说一声|需要我|要不要我|随时告诉我|如果你希望|如果还需要|如需我")
 EM_DASH = re.compile(r"——|(?<![a-zA-Z0-9-])—(?![a-zA-Z0-9-])")
 MD_HEADING = re.compile(r"(?m)^\s{0,3}#{1,6}\s")
+MD_TABLE = re.compile(r"(?m)^\s*\|.*\|")
+MD_HR = re.compile(r"(?m)^\s*---\s*$")
 MD_BOLD = re.compile(r"\*\*[^*\n]{1,60}\*\*")
 MD_BULLET = re.compile(r"(?m)^\s*[-*+]\s")
 MD_NUMBERED = re.compile(r"(?m)^\s*\d+\.\s")
+PATH_OR_RATIO = re.compile(r"(?<![A-Za-z0-9\u4e00-\u9fff])(?:/[A-Za-z0-9_.*-]+)+/?|\b\d+/\d+\b")
 
 
 def _first_index(text: str, anchors: list[str]) -> int | None:
@@ -187,7 +194,7 @@ def score_hed(task: Task, text: str) -> tuple[float, float]:
     n = char_len(prose)
     if n == 0:
         return 0.0, 0.0
-    count = sum(prose.count(w) for w in HEDGE_WORDS)
+    count = len(HEDGE_RE.findall(prose))
     rate = per_1000(count, n, floor=150)
     base = clamp((rate - 3.0) / 12.0) * 70.0
 
@@ -203,8 +210,8 @@ def score_hed(task: Task, text: str) -> tuple[float, float]:
 
 
 def score_enu(text: str) -> tuple[float, float]:
-    """M3 报菜名堆砌：顿号与斜杠密度 + 单句术语连发。"""
-    prose = strip_code(text)
+    """M3 报菜名堆砌：顿号与斜杠密度 + 单句术语连发（剥离 Unix 路径与数字比值）。"""
+    prose = PATH_OR_RATIO.sub(" ", strip_code(text))
     n = char_len(prose)
     if n == 0:
         return 0.0, 0.0
@@ -332,15 +339,14 @@ def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[floa
     md_count = 0
     if task.register == "chat":
         md_count = (
-            len(MD_HEADING.findall(text))
-            + len(MD_BOLD.findall(text))
-            + len(MD_BULLET.findall(text))
-            + len(MD_NUMBERED.findall(text))
+            len(MD_HEADING.findall(text)) * 2
+            + len(MD_TABLE.findall(text)) * 2
+            + len(MD_HR.findall(text)) * 2
         )
     md_rate = md_count * 500.0 / n
 
     cv = _cv_component(split_sentences(prose))
-    raw = (0.45 * clamp(tics_rate / 8.0) + 0.20 * dash_comp + 0.08 * clamp(md_rate / 4.0) + 0.15 * cv) / 0.88
+    raw = (0.40 * clamp(tics_rate / 8.0) + 0.25 * dash_comp + 0.20 * clamp(md_rate / 4.0) + 0.15 * cv)
     raw = clamp(0.85 * raw + 0.15 * opening_penalty)
     return round(saturate(raw, tau=0.05, k=8.0), 2), raw
 

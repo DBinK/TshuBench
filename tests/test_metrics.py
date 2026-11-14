@@ -71,6 +71,14 @@ def test_enu_stuffing_versus_plain():
     assert light == 0.0
 
 
+def test_enu_ignores_unix_paths_and_multiline_lists():
+    clean_path, _ = score_enu("不要直接删 /var/log/nginx/access.log，先看 /etc/logrotate.d/nginx 配置。")
+    multiline, _ = score_enu("- 检查数据库、缓存\n- 确认消息、队列\n- 核对日志、监控")
+    singleline, _ = score_enu("- 检查数据库、缓存、消息、队列、日志、监控")
+    assert clean_path == 0.0
+    assert multiline < singleline
+
+
 def test_af_excuse_and_truncation():
     excuse, _ = score_af("我没有群聊发送工具，无法直接发到群里。")
     truncated, _ = score_af(
@@ -145,6 +153,16 @@ def test_vtr_em_dash_and_support_closing():
     clean, _ = score_vtr(task, "核心原因是锁竞争。直接把锁粒度拆小。")
     assert sloppy > 35.0
     assert clean == 0.0
+
+
+def test_vtr_table_wall_penalized_and_bold_bullet_exempt():
+    task = make_task(register="chat")
+    table_reply = "| 原因 | 建议 |\n|---|---|\n| 内存泄漏 | 排查对象 |\n| 堆太小 | 调大 Xmx |"
+    bold_bullet_reply = "**直接改这里**：\n- 把 CACHE 换成 TTLCache\n- 重启观察内存"
+    table_score, _ = score_vtr(task, table_reply)
+    clean_score, _ = score_vtr(task, bold_bullet_reply)
+    assert table_score > 30.0
+    assert clean_score == 0.0
 
 
 def test_hed_disclaimer_phrases():

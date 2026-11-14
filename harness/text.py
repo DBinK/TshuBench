@@ -6,7 +6,7 @@ from collections import Counter
 
 FENCED_CODE = re.compile(r"```.*?```", re.S)
 INLINE_CODE_TICKS = re.compile(r"`([^`\n]{1,80})`")
-SENTENCE_END = re.compile(r"[。！？!?…]+")
+SENTENCE_END = re.compile(r"[。！？!?…]+|\n+")
 CLAUSE_SEP = re.compile(r"[，、；;：:,]")
 WHITESPACE = re.compile(r"\s+")
 CJK = re.compile(r"[\u4e00-\u9fa5]")
