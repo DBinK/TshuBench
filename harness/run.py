@@ -47,7 +47,7 @@ async def call_once(
         "temperature": temperature,
     }
     if reasoning_effort:
-        payload["reasoning"] = {"effort": reasoning_effort}
+        payload["reasoning_effort"] = reasoning_effort
     started = time.perf_counter()
     last_error: Exception | None = None
     for attempt in range(3):
