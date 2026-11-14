@@ -88,3 +88,6 @@ class ModelReport:
     metrics: dict[str, float]
     opening_entropy: float
     worst: list[ScoredSample] = field(default_factory=list)
+    ci_lower: float = 0.0
+    ci_upper: float = 0.0
+

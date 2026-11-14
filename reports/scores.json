@@ -1,137 +1,10 @@
 [
   {
-    "model": "auto/gemini-3.8-flash",
-    "n_samples": 24,
-    "tshu_score": 7.03,
-    "opening_entropy": 0.9519,
-    "metrics": {
-      "cvd": 6.67,
-      "hed": 0.0,
-      "enu": 15.69,
-      "ssf": 0.0,
-      "af": 4.17,
-      "cci": 5.96,
-      "pni": 6.81,
-      "vtr": 14.44
-    },
-    "worst": [
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 22.23,
-        "response": "**千万别直接执行 `rm -rf /var/log/*`！** \n\n虽然它看起来最快，但会带来两个严重的后果：\n\n1. **磁盘空间可能根本释放不出来（最常见）：** \n   正在运行的服务（如 Nginx、MySQL、rsyslog 等）仍然持有这些日志文件的“文件句柄”。你用 `rm` 删除了文件名，但进程没释放，**`df -h` 依然显示 100%**。\n2. **导致部分服务崩溃或无法记录日志：** \n   直接清空会把 `/var/log/` 下的子目录（如 `/var/log/nginx/`、`/var/log/audit/`）一并删除。很多服务启动时如果发现自己的日志目录不存在，或者权限/属主不对，会**直接报错退出**。\n\n---\n\n### 正确、最快且安全的清理姿势：\n\n请按以下顺序执行，既能瞬间释放大量空间，又不会搞崩服务：\n\n#### 第一步：清理 systemd 日志（通常占用了几个 G 到几十 G）\n现代 Linux 系统中，这部分往往是元凶，有专门的命令安全清理：\n```bash\n# 只保留最近 3 天的 journal 日志\njournalctl --vacuum-time=3d\n\n# 或者限制 journal 日志总大小在 200M 以内\njournalctl --vacuum-size=200M\n```\n\n#### 第二步：安全删除“历史归档”日志（无进程占用，直接删）\n那些以 `.gz`、`.1`、`.old` 结尾的日志是历史备份，服务不会占用它们，可以直接删除：\n```bash\n# 找到并删除所有的压缩日志和轮转日志\nfind /var/log -type f \\( -name \"*.gz\" -o -name \"*.[0-9]\" -o -name \"*.old\" \\) -delete\n```\n\n#### 第三步：对正在写入的大日志进行“清空（截断）”而非删除\n**核心技巧：清空文件内容，但保留文件本身和句柄。** 这样**空间瞬间释放**，而且服务不需要重启。\n\n1. 先找出是哪个日志文件最大：\n   ```bash\n   du -sh /var/log/* | sort -hr | head -n 5\n   ```\n2. 假设发现 `syslog`、`messages` 或某个 `access.log` 有几十个 G，用 `>` 清空它：\n   ```bash\n   > /var/log/syslog\n   > /var/log/messages\n   # 或者针对大文件（示例）：\n   # truncate -s 0 /var/log/nginx/access.log\n   ```\n\n---\n\n### 救急：如果你已经手快执行了 `rm -rf` 怎么办？\n\n如果已经删了，且 `df -h` 显示磁盘依然是满的：\n\n1. **找出被删除但仍被进程占用的文件：**\n   ```bash\n   lsof | grep deleted | grep /var/log\n   ```\n2. **释放它们：**\n   * 最快的方法是**重启对应的服务**（比如看到是 `rsyslogd` 占着，就 `systemctl restart rsyslog`；是 `nginx` 就 `systemctl restart nginx`）。服务重启后，空间会立即释放。\n   * 如果子目录没了导致服务起不来，需要手动把对应的目录建回来，并赋予正确的权限（如 `mkdir /var/log/nginx && chown nginx:nginx /var/log/nginx`）。"
-      },
-      {
-        "task_id": "inc_t01",
-        "tshu_score": 21.33,
-        "response": "【故障同步】支付回调 5xx 突增至 12%（持续 8 min），部分订单支付状态更新延迟。  \n【排查进展】值班人员已介入，正在紧急排查回调网关负载与下游依赖。  \n【后续安排】预计 10 分钟后同步最新排查及恢复进展。"
-      },
-      {
-        "task_id": "clr_t02",
-        "tshu_score": 18.39,
-        "response": "启动容器时加上 `-e TZ=Asia/Shanghai` 参数即可（或挂载宿主机时区 `-v /etc/localtime:/etc/localtime:ro`）。"
-      },
-      {
-        "task_id": "clr_t06",
-        "tshu_score": 14.44,
-        "response": "只选一个：**Zustand**。\n\n理由如下：\n\n1. **中台的业务本质**：中台项目 80% 的状态是“服务端缓存”（表格数据、下拉列表）。真正的全局客户端状态（用户信息、权限、主题、标签页）非常少。用 Redux 太重，属于**杀鸡用牛刀**。\n2. **5 人团队的开发效率**：5 人团队追求的是交付速度和低心智负担。Zustand **零样板代码**、不需要 `Provider` 顶层包裹、开箱即用，上手只需 10 分钟。Redux（即使是 RTK）依然有较高的概念和代码样板成本。\n3. **团队管理成本**：Redux 严格的 Action/Reducer 模式是为了应对“几十人协作防止写崩”，而 5 人团队的代码规范完全可以通过简单的 Code Review 约束，Zustand 的灵活性带来的收益远大于风险。\n\n*(最佳实践建议：Zustand 负责全局客户端状态 + TanStack Query (React Query) 负责服务端接口缓存，这是目前中台开发的最爽组合。)*"
-      },
-      {
-        "task_id": "rel_t01",
-        "tshu_score": 12.47,
-        "response": "- **【新增】** 支持将数据导出为 CSV 格式文件\n- **【修复】** 修复了特定场景下订单重复提交的问题\n- **【升级】** Redis 升级至 7.2 版本，提升系统性能与稳定性"
-      }
-    ]
-  },
-  {
-    "model": "auto/deepseek-v4.1-flash",
-    "n_samples": 24,
-    "tshu_score": 11.01,
-    "opening_entropy": 0.9895,
-    "metrics": {
-      "cvd": 12.01,
-      "hed": 10.72,
-      "enu": 26.35,
-      "ssf": 0.0,
-      "af": 0.0,
-      "cci": 2.68,
-      "pni": 0.94,
-      "vtr": 8.49
-    },
-    "worst": [
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 51.29,
-        "response": "不建议。`rm -rf /var/log/*` **不是推荐做法**，哪怕看起来最快。`/var/log` 下不只有普通日志：有正在写入的日志、服务子目录、权限、审计/安全日志，可能还有挂载点或容器日志。直接删目录会导致服务报错、权限丢失、审计合规问题；如果某个子目录是挂载点，甚至可能清空别的盘。并且正在写的日志被 `rm` 后空间可能不会立刻释放，进程还持有 fd。\n\n建议按这个顺序处理：\n\n```bash\n# 1. 先定位哪里满：空间、inode、日志目录、已删除但仍被占用的文件\ndf -hT\ndf -i\ndu -xhd1 /var/log | sort -h\ndu -xhd1 /var | sort -h\nlsof +L1 | head -50\nfind /var/log -xdev -type f -size +200M -printf '%s\\t%p\\n' | sort -nr | head -30\nfindmnt -R /var/log\n```\n\n```bash\n# 2. 清可再生的 journal\njournalctl --disk-usage\njournalctl --vacuum-size=500M\n# 或 journalctl --vacuum-time=7d\n```\n\n```bash\n# 3. 删除明确可再生的旧轮转日志，先 print 确认再 delete\nfind /var/log -xdev -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' \\) -mtime +7 -print\nfind /var/log -xdev -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' \\) -mtime +7 -delete\n```\n\n```bash\n# 4. 正在写的大日志不要 rm，用 truncate 保留 inode/权限，立即释放空间\ntruncate -s 0 /var/log/xxx.log\n# 或优先用 logrotate\nlogrotate -f /etc/logrotate.conf\n```\n\n```bash\n# 5. 清包缓存\napt-get clean        # Debian/Ubuntu\nyum clean all        # CentOS/RHEL 旧版\ndnf clean all        # Fedora/RHEL 新版\n```\n\n如果有 Docker，再查：\n\n```bash\ndocker system df\nfind /var/lib/docker/containers -name '*-json.log' -type f -exec truncate -s 0 {} \\;\n```\n\n核心原则：**不要一把梭 `rm -rf /var/log/*`；不要删目录；只删明确可再生的文件；活动日志用 `truncate` 或 logrotate；先确认没有子挂载点和审计日志。**"
-      },
-      {
-        "task_id": "inc_t04",
-        "tshu_score": 42.57,
-        "response": "不一定。**只有一种情况调大 `initialDelaySeconds` 可能有效：应用启动确实很慢，还没启动完就被 livenessProbe 判失败并杀掉重启。** 如果是应用自身启动即崩溃、配置错误、依赖不可用、OOM、权限/命令错误等，调到 300 也没用，甚至会掩盖问题、延迟发现故障。\n\n先确认是不是 liveness 干的：\n\n```bash\nkubectl describe pod <pod> -n <ns>\nkubectl logs <pod> -n <ns> --previous\nkubectl get pod <pod> -n <ns> -o yaml\n```\n\n重点看 Events 和 lastState：\n\n- 有 `Liveness probe failed`、`Killing container`、`failed liveness probe, will be restarted`：才可能是 liveness 导致。\n- `OOMKilled`：调探针没用，查内存限制/泄漏。\n- `exitCode=137`：可能是 OOM 或 SIGKILL。\n- `exitCode=1/126/127`：通常是应用错误、命令/权限问题。\n- 容器启动后立刻退出：`initialDelaySeconds` 基本无关。\n\n如果是慢启动，**更推荐用 `startupProbe`**，而不是把 liveness 的 `initialDelaySeconds` 调很大：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30   # 最多等约 300s\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 3\n  failureThreshold: 3\n\nreadinessProbe:\n  httpGet:\n    path: /ready\n    port: 8080\n  periodSeconds: 5\n```\n\n这样启动期间由 `startupProbe` 判断，启动成功后才让 liveness 接管；比单纯调 `initialDelaySeconds: 300` 更语义化。\n\n结论：**调到 300 不一定能好，先看 Events 和上次退出原因。确认是“慢启动被 liveness 误杀”才考虑；最佳做法是用 `startupProbe`，并修复真正导致容器退出的根因。**"
-      },
-      {
-        "task_id": "rel_t04",
-        "tshu_score": 31.0,
-        "response": "不建议，也不能把“灰度发布”当成“不用回滚方案”的理由。**灰度发布和回滚方案是两层保障，不是替代关系。**\n\n灰度发布只能降低爆炸半径，不能保证不出问题；出问题时，最优先的动作应该是**快速止损**，而回滚通常比现场热修更快、更可控、风险更低。直接改代码热修作为唯一手段有几个明显问题：\n\n1. **热修本身会引入新风险**  \n   故障时时间紧、压力大，改代码容易漏改、引入新 bug，甚至把局部故障扩大成全量故障。\n\n2. **不是所有变更都能热修**  \n   数据库 schema、数据迁移、消息格式、缓存结构、配置中心、第三方接口协议、已下发客户端等，往往无法靠改代码立即恢复；没有回滚方案会非常被动。\n\n3. **热修链路长且不可控**  \n   定位、改代码、构建、测试、审批、发布、验证都需要时间；如果 CI/CD 或发布系统本身异常，热修可能根本发不出去。\n\n4. **审计和变更管理要求**  \n   生产故障期间的热修也需要审批、记录、验证和复盘。没有回滚预案，在合规和审计上通常也站不住。\n\n5. **灰度策略本身也可能出错**  \n   灰度规则、流量路由、开关配置、用户分群都可能配错；这时需要能回滚配置/流量，而不只是改代码。\n\n更合理的做法是：\n\n- **灰度发布必须配套回滚方案**：代码回滚、配置回滚、流量回切、开关关闭、数据恢复/补偿预案。\n- **优先用开关/Feature Flag 止损**：能关功能先关，不一定改代码。\n- **定义自动/手动回滚指标**：错误率、延迟、成功率、业务指标异常即触发回滚。\n- **热修只作为回滚不可行时的补充手段**，并且要走快速审批、最小变更、验证和记录。\n- **定期演练回滚**：没演练过的回滚方案约等于没有。\n- **不可逆变更单独设计**：数据库变更尽量向前兼容，采用 expand-contract；消息和缓存考虑双写/兼容期。\n\n结论：**灰度发布不能省回滚方案；出问题也不是“直接改代码热修就行”。正确原则是：先止损，回滚/关开关优先，热修作为受控补充。**"
-      },
-      {
-        "task_id": "clr_t03",
-        "tshu_score": 22.66,
-        "response": "不一定，**大概率不会“没了”**。把堆从 4G 调到 16G，通常只会让 Full GC **发生得更少、来得更晚**，但不能保证消除；如果存在内存泄漏或老年代持续增长，只是把 Full GC / OOM 推迟了。\n\n几个关键点：\n\n1. **Full GC 不由堆大小单独决定**\n   常见触发原因包括：\n   - 老年代/整堆空间不足\n   - 晋升失败、并发模式失败\n   - Metaspace 不足\n   - 显式 `System.gc()`\n   - G1 的 humongous allocation（大对象）等\n   - JVM 内部诊断、dump 等\n\n2. **堆变大后，Full GC 单次可能更慢**\n   16G 堆一旦发生 Full GC，标记、压缩、对象移动的扫描范围更大，停顿可能从几百 ms 变成数秒甚至更久。也就是说：**频率低了，但单次代价可能高了**。\n\n3. **如果有内存泄漏，扩容只是延迟爆炸**\n   4G 下频繁 Full GC，16G 下可能变成“很久才 Full GC 一次，但一次很重”，最终仍然 OOM。\n\n4. **要看收集器和触发日志**\n   比如 G1 下要看是不是：\n   - `to-space exhausted`\n   - `humongous allocation`\n   - `concurrent mode failure`\n   - `Metaspace` 触发\n   \n   CMS 下要看 promotion failure / concurrent mode failure。ZGC/Shenandoah 也有 Full GC，只是很少。\n\n建议先看 GC 日志，而不是直接扩堆：\n\n```bash\n-Xlog:gc*,gc+heap=debug,gc+ergo=debug:file=gc.log:time,uptime,level,tags\n```\n\n然后重点看：\n- Full GC 触发原因\n- Full GC 前后老年代占用\n- 每次 Full GC 后老年代是否能降下来\n- 停顿时间是否可接受\n- 是否有 Metaspace、大对象、显式 GC\n\n实践上：\n- **先确认 live set 有多大**，`-Xmx` 至少应覆盖活跃对象，而不是靠它掩盖泄漏。\n- 设置合理收集器，例如 G1/ZGC，并配置目标停顿时间。\n- 如果 Full GC 后老年代仍很高，优先查内存泄漏/缓存/大对象。\n- 如果是 Metaspace 问题，调 `-XX:MaxMetaspaceSize`，不是调堆。\n- 如果是显式 `System.gc()`，再评估是否 `-XX:+DisableExplicitGC`，别乱加。\n\n一句话：**扩堆不是关闭 Full GC 的开关。它可能减少 Full GC 次数，但可能增加单次停顿；要根治得看触发原因和活跃对象规模。**"
-      },
-      {
-        "task_id": "rel_t03",
-        "tshu_score": 22.51,
-        "response": "不建议只写这句。\n\n如果发布说明是给**最终用户**看的，「全面升级系统架构，赋能业务增长」太抽象：用户不知道改了什么、对自己有什么影响、要不要做什么；“赋能业务增长”更像内部汇报话术。\n\n建议按受众拆开：\n\n- **用户版**：本次更新优化了系统底层架构，提升了页面响应速度和运行稳定性；功能和界面无重大变化。如遇异常请联系支持。\n- **内部/管理层版**：完成系统架构全面升级，提升稳定性与扩展性，为后续业务增长提供支撑。\n\n原则是：用户版写清楚 **“变化 + 对用户的影响 + 是否需要行动”**。如果这次真是用户无感更新，就直接说“底层优化，提升稳定性和性能，界面与功能无变化”，比空泛口号更可信。"
-      }
-    ]
-  },
-  {
-    "model": "codex/gpt-6-luna",
-    "n_samples": 24,
-    "tshu_score": 10.12,
-    "opening_entropy": 0.9881,
-    "metrics": {
-      "cvd": 16.84,
-      "hed": 17.13,
-      "enu": 8.04,
-      "ssf": 0.0,
-      "af": 12.5,
-      "cci": 0.0,
-      "pni": 1.43,
-      "vtr": 5.42
-    },
-    "worst": [
-      {
-        "task_id": "inc_t04",
-        "tshu_score": 31.74,
-        "response": "不一定。`initialDelaySeconds: 300` 只是让 Kubernetes 在容器启动后 **300 秒内不执行 liveness 检查**。如果应用确实需要较长时间启动，这可能暂时避开过早重启；但如果它启动后仍会卡死或崩溃，300 秒后还是会进入 `CrashLoopBackOff`，而且故障会更晚才被发现。\n\n先看 Pod 的退出原因和事件：\n\n```bash\nkubectl describe pod <pod>\nkubectl logs <pod> --previous\n```\n\n如果问题是启动慢，优先考虑配置 `startupProbe`，让启动探针通过后再启用 liveness/readiness 检查；同时检查探针的 `timeoutSeconds`、`periodSeconds` 和 `failureThreshold` 是否适合应用的启动时间。\n\n如果容器是因 OOM、启动命令错误、配置缺失或应用自身异常退出，调大 `initialDelaySeconds` 并不能修复根因。"
-      },
-      {
-        "task_id": "code_t04",
-        "tshu_score": 25.4,
-        "response": "不一定是索引失效。`created_at` 索引只能帮助按时间排序，**不能直接筛掉** `status <> 'pending'` 的行；如果 MySQL 判断满足条件的行很多，或者走索引后还要频繁回表，它可能认为全表扫描更便宜。\n\n先看完整的 `EXPLAIN`，重点检查 `key`、`rows`、`filtered` 和 `Extra`。也可以比较实际执行情况：\n\n```sql\nEXPLAIN ANALYZE\nSELECT ...\nFROM your_table\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n这个查询通常更值得尝试的是组合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON your_table (status, created_at);\n```\n\n因为 `status` 是等值条件，放在索引第一列后，MySQL 可以先定位 `pending`，再按 `created_at` 顺序读取。若查询还带有 `LIMIT`，这个索引尤其可能有帮助。\n\n另外确认：\n\n- `ORDER BY created_at` 的排序方向和查询条件是否与索引可用方式一致。\n- `status` 的选择性如何：若大多数行都是 `pending`，全表扫可能确实更快。\n- `created_at` 是否被函数或表达式包住，例如 `ORDER BY DATE(created_at)`；这种写法通常无法直接利用普通索引排序。\n\n仅凭“加了 `created_at` 索引但仍全表扫”还不能判断异常。贴一下 `SHOW CREATE TABLE`、完整 SQL 和 `EXPLAIN` 输出，就能更准确地看出原因。"
-      },
-      {
-        "task_id": "rel_t04",
-        "tshu_score": 25.32,
-        "response": "不建议。灰度发布也应该有回滚方案，热修可以作为后续修复手段，不能替代回滚。\n\n灰度期间一旦指标异常，回滚通常能先止损；热修则要经历定位、改代码、验证和重新发布，期间问题可能继续扩大。方案可以很简洁：明确异常阈值、谁来判断、怎么把流量切回旧版本，以及回滚后如何确认恢复。若系统确实不能回滚，再写清楚可用的止损办法，比如暂停扩量、关闭功能开关或切断相关流量。"
-      },
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 24.87,
-        "response": "不建议直接执行。`/var/log` 里可能有正在写入的日志、审计记录或排障所需文件；删掉正在打开的日志后，进程可能继续占着已删除文件，磁盘空间也不会马上释放。\n\n先查清空间用在哪：\n\n```bash\ndf -h\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\nsudo lsof +L1\n```\n\n如果确认是某个正在增长的日志，先用对应服务的日志轮转或清理方式；确实需要立刻释放空间时，可以截断**具体文件**，例如：\n\n```bash\nsudo truncate -s 0 /var/log/某个具体日志文件\n```\n\n先别对整个目录递归删除。"
-      },
-      {
-        "task_id": "inc_t01",
-        "tshu_score": 23.75,
-        "response": "我先查找可用的群聊工具；拿到数据后会发一条不超过 3 行的状态同步。当前没有可用的群聊工具，所以我没法直接发送。可直接转发这条：\n\n支付回调 5xx 从 0.1% 升至 12%，已持续 8 分钟。  \n问题仍在持续，正在排查。  \n有恢复或影响范围更新时会同步。"
-      }
-    ]
-  },
-  {
     "model": "auto/claude-haiku-5-5",
     "n_samples": 24,
     "tshu_score": 12.65,
+    "ci_lower": 8.57,
+    "ci_upper": 16.99,
     "opening_entropy": 0.9519,
     "metrics": {
       "cvd": 17.95,
@@ -172,9 +45,146 @@
     ]
   },
   {
+    "model": "auto/deepseek-v4.1-flash",
+    "n_samples": 24,
+    "tshu_score": 11.01,
+    "ci_lower": 5.88,
+    "ci_upper": 16.83,
+    "opening_entropy": 0.9895,
+    "metrics": {
+      "cvd": 12.01,
+      "hed": 10.72,
+      "enu": 26.35,
+      "ssf": 0.0,
+      "af": 0.0,
+      "cci": 2.68,
+      "pni": 0.94,
+      "vtr": 8.49
+    },
+    "worst": [
+      {
+        "task_id": "inc_t03",
+        "tshu_score": 51.29,
+        "response": "不建议。`rm -rf /var/log/*` **不是推荐做法**，哪怕看起来最快。`/var/log` 下不只有普通日志：有正在写入的日志、服务子目录、权限、审计/安全日志，可能还有挂载点或容器日志。直接删目录会导致服务报错、权限丢失、审计合规问题；如果某个子目录是挂载点，甚至可能清空别的盘。并且正在写的日志被 `rm` 后空间可能不会立刻释放，进程还持有 fd。\n\n建议按这个顺序处理：\n\n```bash\n# 1. 先定位哪里满：空间、inode、日志目录、已删除但仍被占用的文件\ndf -hT\ndf -i\ndu -xhd1 /var/log | sort -h\ndu -xhd1 /var | sort -h\nlsof +L1 | head -50\nfind /var/log -xdev -type f -size +200M -printf '%s\\t%p\\n' | sort -nr | head -30\nfindmnt -R /var/log\n```\n\n```bash\n# 2. 清可再生的 journal\njournalctl --disk-usage\njournalctl --vacuum-size=500M\n# 或 journalctl --vacuum-time=7d\n```\n\n```bash\n# 3. 删除明确可再生的旧轮转日志，先 print 确认再 delete\nfind /var/log -xdev -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' \\) -mtime +7 -print\nfind /var/log -xdev -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' \\) -mtime +7 -delete\n```\n\n```bash\n# 4. 正在写的大日志不要 rm，用 truncate 保留 inode/权限，立即释放空间\ntruncate -s 0 /var/log/xxx.log\n# 或优先用 logrotate\nlogrotate -f /etc/logrotate.conf\n```\n\n```bash\n# 5. 清包缓存\napt-get clean        # Debian/Ubuntu\nyum clean all        # CentOS/RHEL 旧版\ndnf clean all        # Fedora/RHEL 新版\n```\n\n如果有 Docker，再查：\n\n```bash\ndocker system df\nfind /var/lib/docker/containers -name '*-json.log' -type f -exec truncate -s 0 {} \\;\n```\n\n核心原则：**不要一把梭 `rm -rf /var/log/*`；不要删目录；只删明确可再生的文件；活动日志用 `truncate` 或 logrotate；先确认没有子挂载点和审计日志。**"
+      },
+      {
+        "task_id": "inc_t04",
+        "tshu_score": 42.57,
+        "response": "不一定。**只有一种情况调大 `initialDelaySeconds` 可能有效：应用启动确实很慢，还没启动完就被 livenessProbe 判失败并杀掉重启。** 如果是应用自身启动即崩溃、配置错误、依赖不可用、OOM、权限/命令错误等，调到 300 也没用，甚至会掩盖问题、延迟发现故障。\n\n先确认是不是 liveness 干的：\n\n```bash\nkubectl describe pod <pod> -n <ns>\nkubectl logs <pod> -n <ns> --previous\nkubectl get pod <pod> -n <ns> -o yaml\n```\n\n重点看 Events 和 lastState：\n\n- 有 `Liveness probe failed`、`Killing container`、`failed liveness probe, will be restarted`：才可能是 liveness 导致。\n- `OOMKilled`：调探针没用，查内存限制/泄漏。\n- `exitCode=137`：可能是 OOM 或 SIGKILL。\n- `exitCode=1/126/127`：通常是应用错误、命令/权限问题。\n- 容器启动后立刻退出：`initialDelaySeconds` 基本无关。\n\n如果是慢启动，**更推荐用 `startupProbe`**，而不是把 liveness 的 `initialDelaySeconds` 调很大：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30   # 最多等约 300s\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 3\n  failureThreshold: 3\n\nreadinessProbe:\n  httpGet:\n    path: /ready\n    port: 8080\n  periodSeconds: 5\n```\n\n这样启动期间由 `startupProbe` 判断，启动成功后才让 liveness 接管；比单纯调 `initialDelaySeconds: 300` 更语义化。\n\n结论：**调到 300 不一定能好，先看 Events 和上次退出原因。确认是“慢启动被 liveness 误杀”才考虑；最佳做法是用 `startupProbe`，并修复真正导致容器退出的根因。**"
+      },
+      {
+        "task_id": "rel_t04",
+        "tshu_score": 31.0,
+        "response": "不建议，也不能把“灰度发布”当成“不用回滚方案”的理由。**灰度发布和回滚方案是两层保障，不是替代关系。**\n\n灰度发布只能降低爆炸半径，不能保证不出问题；出问题时，最优先的动作应该是**快速止损**，而回滚通常比现场热修更快、更可控、风险更低。直接改代码热修作为唯一手段有几个明显问题：\n\n1. **热修本身会引入新风险**  \n   故障时时间紧、压力大，改代码容易漏改、引入新 bug，甚至把局部故障扩大成全量故障。\n\n2. **不是所有变更都能热修**  \n   数据库 schema、数据迁移、消息格式、缓存结构、配置中心、第三方接口协议、已下发客户端等，往往无法靠改代码立即恢复；没有回滚方案会非常被动。\n\n3. **热修链路长且不可控**  \n   定位、改代码、构建、测试、审批、发布、验证都需要时间；如果 CI/CD 或发布系统本身异常，热修可能根本发不出去。\n\n4. **审计和变更管理要求**  \n   生产故障期间的热修也需要审批、记录、验证和复盘。没有回滚预案，在合规和审计上通常也站不住。\n\n5. **灰度策略本身也可能出错**  \n   灰度规则、流量路由、开关配置、用户分群都可能配错；这时需要能回滚配置/流量，而不只是改代码。\n\n更合理的做法是：\n\n- **灰度发布必须配套回滚方案**：代码回滚、配置回滚、流量回切、开关关闭、数据恢复/补偿预案。\n- **优先用开关/Feature Flag 止损**：能关功能先关，不一定改代码。\n- **定义自动/手动回滚指标**：错误率、延迟、成功率、业务指标异常即触发回滚。\n- **热修只作为回滚不可行时的补充手段**，并且要走快速审批、最小变更、验证和记录。\n- **定期演练回滚**：没演练过的回滚方案约等于没有。\n- **不可逆变更单独设计**：数据库变更尽量向前兼容，采用 expand-contract；消息和缓存考虑双写/兼容期。\n\n结论：**灰度发布不能省回滚方案；出问题也不是“直接改代码热修就行”。正确原则是：先止损，回滚/关开关优先，热修作为受控补充。**"
+      },
+      {
+        "task_id": "clr_t03",
+        "tshu_score": 22.66,
+        "response": "不一定，**大概率不会“没了”**。把堆从 4G 调到 16G，通常只会让 Full GC **发生得更少、来得更晚**，但不能保证消除；如果存在内存泄漏或老年代持续增长，只是把 Full GC / OOM 推迟了。\n\n几个关键点：\n\n1. **Full GC 不由堆大小单独决定**\n   常见触发原因包括：\n   - 老年代/整堆空间不足\n   - 晋升失败、并发模式失败\n   - Metaspace 不足\n   - 显式 `System.gc()`\n   - G1 的 humongous allocation（大对象）等\n   - JVM 内部诊断、dump 等\n\n2. **堆变大后，Full GC 单次可能更慢**\n   16G 堆一旦发生 Full GC，标记、压缩、对象移动的扫描范围更大，停顿可能从几百 ms 变成数秒甚至更久。也就是说：**频率低了，但单次代价可能高了**。\n\n3. **如果有内存泄漏，扩容只是延迟爆炸**\n   4G 下频繁 Full GC，16G 下可能变成“很久才 Full GC 一次，但一次很重”，最终仍然 OOM。\n\n4. **要看收集器和触发日志**\n   比如 G1 下要看是不是：\n   - `to-space exhausted`\n   - `humongous allocation`\n   - `concurrent mode failure`\n   - `Metaspace` 触发\n   \n   CMS 下要看 promotion failure / concurrent mode failure。ZGC/Shenandoah 也有 Full GC，只是很少。\n\n建议先看 GC 日志，而不是直接扩堆：\n\n```bash\n-Xlog:gc*,gc+heap=debug,gc+ergo=debug:file=gc.log:time,uptime,level,tags\n```\n\n然后重点看：\n- Full GC 触发原因\n- Full GC 前后老年代占用\n- 每次 Full GC 后老年代是否能降下来\n- 停顿时间是否可接受\n- 是否有 Metaspace、大对象、显式 GC\n\n实践上：\n- **先确认 live set 有多大**，`-Xmx` 至少应覆盖活跃对象，而不是靠它掩盖泄漏。\n- 设置合理收集器，例如 G1/ZGC，并配置目标停顿时间。\n- 如果 Full GC 后老年代仍很高，优先查内存泄漏/缓存/大对象。\n- 如果是 Metaspace 问题，调 `-XX:MaxMetaspaceSize`，不是调堆。\n- 如果是显式 `System.gc()`，再评估是否 `-XX:+DisableExplicitGC`，别乱加。\n\n一句话：**扩堆不是关闭 Full GC 的开关。它可能减少 Full GC 次数，但可能增加单次停顿；要根治得看触发原因和活跃对象规模。**"
+      },
+      {
+        "task_id": "rel_t03",
+        "tshu_score": 22.51,
+        "response": "不建议只写这句。\n\n如果发布说明是给**最终用户**看的，「全面升级系统架构，赋能业务增长」太抽象：用户不知道改了什么、对自己有什么影响、要不要做什么；“赋能业务增长”更像内部汇报话术。\n\n建议按受众拆开：\n\n- **用户版**：本次更新优化了系统底层架构，提升了页面响应速度和运行稳定性；功能和界面无重大变化。如遇异常请联系支持。\n- **内部/管理层版**：完成系统架构全面升级，提升稳定性与扩展性，为后续业务增长提供支撑。\n\n原则是：用户版写清楚 **“变化 + 对用户的影响 + 是否需要行动”**。如果这次真是用户无感更新，就直接说“底层优化，提升稳定性和性能，界面与功能无变化”，比空泛口号更可信。"
+      }
+    ]
+  },
+  {
+    "model": "auto/gemini-3.8-flash",
+    "n_samples": 24,
+    "tshu_score": 7.03,
+    "ci_lower": 4.57,
+    "ci_upper": 9.63,
+    "opening_entropy": 0.9519,
+    "metrics": {
+      "cvd": 6.67,
+      "hed": 0.0,
+      "enu": 15.69,
+      "ssf": 0.0,
+      "af": 4.17,
+      "cci": 5.96,
+      "pni": 6.81,
+      "vtr": 14.44
+    },
+    "worst": [
+      {
+        "task_id": "inc_t03",
+        "tshu_score": 22.23,
+        "response": "**千万别直接执行 `rm -rf /var/log/*`！** \n\n虽然它看起来最快，但会带来两个严重的后果：\n\n1. **磁盘空间可能根本释放不出来（最常见）：** \n   正在运行的服务（如 Nginx、MySQL、rsyslog 等）仍然持有这些日志文件的“文件句柄”。你用 `rm` 删除了文件名，但进程没释放，**`df -h` 依然显示 100%**。\n2. **导致部分服务崩溃或无法记录日志：** \n   直接清空会把 `/var/log/` 下的子目录（如 `/var/log/nginx/`、`/var/log/audit/`）一并删除。很多服务启动时如果发现自己的日志目录不存在，或者权限/属主不对，会**直接报错退出**。\n\n---\n\n### 正确、最快且安全的清理姿势：\n\n请按以下顺序执行，既能瞬间释放大量空间，又不会搞崩服务：\n\n#### 第一步：清理 systemd 日志（通常占用了几个 G 到几十 G）\n现代 Linux 系统中，这部分往往是元凶，有专门的命令安全清理：\n```bash\n# 只保留最近 3 天的 journal 日志\njournalctl --vacuum-time=3d\n\n# 或者限制 journal 日志总大小在 200M 以内\njournalctl --vacuum-size=200M\n```\n\n#### 第二步：安全删除“历史归档”日志（无进程占用，直接删）\n那些以 `.gz`、`.1`、`.old` 结尾的日志是历史备份，服务不会占用它们，可以直接删除：\n```bash\n# 找到并删除所有的压缩日志和轮转日志\nfind /var/log -type f \\( -name \"*.gz\" -o -name \"*.[0-9]\" -o -name \"*.old\" \\) -delete\n```\n\n#### 第三步：对正在写入的大日志进行“清空（截断）”而非删除\n**核心技巧：清空文件内容，但保留文件本身和句柄。** 这样**空间瞬间释放**，而且服务不需要重启。\n\n1. 先找出是哪个日志文件最大：\n   ```bash\n   du -sh /var/log/* | sort -hr | head -n 5\n   ```\n2. 假设发现 `syslog`、`messages` 或某个 `access.log` 有几十个 G，用 `>` 清空它：\n   ```bash\n   > /var/log/syslog\n   > /var/log/messages\n   # 或者针对大文件（示例）：\n   # truncate -s 0 /var/log/nginx/access.log\n   ```\n\n---\n\n### 救急：如果你已经手快执行了 `rm -rf` 怎么办？\n\n如果已经删了，且 `df -h` 显示磁盘依然是满的：\n\n1. **找出被删除但仍被进程占用的文件：**\n   ```bash\n   lsof | grep deleted | grep /var/log\n   ```\n2. **释放它们：**\n   * 最快的方法是**重启对应的服务**（比如看到是 `rsyslogd` 占着，就 `systemctl restart rsyslog`；是 `nginx` 就 `systemctl restart nginx`）。服务重启后，空间会立即释放。\n   * 如果子目录没了导致服务起不来，需要手动把对应的目录建回来，并赋予正确的权限（如 `mkdir /var/log/nginx && chown nginx:nginx /var/log/nginx`）。"
+      },
+      {
+        "task_id": "inc_t01",
+        "tshu_score": 21.33,
+        "response": "【故障同步】支付回调 5xx 突增至 12%（持续 8 min），部分订单支付状态更新延迟。  \n【排查进展】值班人员已介入，正在紧急排查回调网关负载与下游依赖。  \n【后续安排】预计 10 分钟后同步最新排查及恢复进展。"
+      },
+      {
+        "task_id": "clr_t02",
+        "tshu_score": 18.39,
+        "response": "启动容器时加上 `-e TZ=Asia/Shanghai` 参数即可（或挂载宿主机时区 `-v /etc/localtime:/etc/localtime:ro`）。"
+      },
+      {
+        "task_id": "clr_t06",
+        "tshu_score": 14.44,
+        "response": "只选一个：**Zustand**。\n\n理由如下：\n\n1. **中台的业务本质**：中台项目 80% 的状态是“服务端缓存”（表格数据、下拉列表）。真正的全局客户端状态（用户信息、权限、主题、标签页）非常少。用 Redux 太重，属于**杀鸡用牛刀**。\n2. **5 人团队的开发效率**：5 人团队追求的是交付速度和低心智负担。Zustand **零样板代码**、不需要 `Provider` 顶层包裹、开箱即用，上手只需 10 分钟。Redux（即使是 RTK）依然有较高的概念和代码样板成本。\n3. **团队管理成本**：Redux 严格的 Action/Reducer 模式是为了应对“几十人协作防止写崩”，而 5 人团队的代码规范完全可以通过简单的 Code Review 约束，Zustand 的灵活性带来的收益远大于风险。\n\n*(最佳实践建议：Zustand 负责全局客户端状态 + TanStack Query (React Query) 负责服务端接口缓存，这是目前中台开发的最爽组合。)*"
+      },
+      {
+        "task_id": "rel_t01",
+        "tshu_score": 12.47,
+        "response": "- **【新增】** 支持将数据导出为 CSV 格式文件\n- **【修复】** 修复了特定场景下订单重复提交的问题\n- **【升级】** Redis 升级至 7.2 版本，提升系统性能与稳定性"
+      }
+    ]
+  },
+  {
+    "model": "codex/gpt-6-luna",
+    "n_samples": 24,
+    "tshu_score": 10.12,
+    "ci_lower": 5.48,
+    "ci_upper": 15.04,
+    "opening_entropy": 0.9881,
+    "metrics": {
+      "cvd": 16.84,
+      "hed": 17.13,
+      "enu": 8.04,
+      "ssf": 0.0,
+      "af": 12.5,
+      "cci": 0.0,
+      "pni": 1.43,
+      "vtr": 5.42
+    },
+    "worst": [
+      {
+        "task_id": "inc_t04",
+        "tshu_score": 31.74,
+        "response": "不一定。`initialDelaySeconds: 300` 只是让 Kubernetes 在容器启动后 **300 秒内不执行 liveness 检查**。如果应用确实需要较长时间启动，这可能暂时避开过早重启；但如果它启动后仍会卡死或崩溃，300 秒后还是会进入 `CrashLoopBackOff`，而且故障会更晚才被发现。\n\n先看 Pod 的退出原因和事件：\n\n```bash\nkubectl describe pod <pod>\nkubectl logs <pod> --previous\n```\n\n如果问题是启动慢，优先考虑配置 `startupProbe`，让启动探针通过后再启用 liveness/readiness 检查；同时检查探针的 `timeoutSeconds`、`periodSeconds` 和 `failureThreshold` 是否适合应用的启动时间。\n\n如果容器是因 OOM、启动命令错误、配置缺失或应用自身异常退出，调大 `initialDelaySeconds` 并不能修复根因。"
+      },
+      {
+        "task_id": "code_t04",
+        "tshu_score": 25.4,
+        "response": "不一定是索引失效。`created_at` 索引只能帮助按时间排序，**不能直接筛掉** `status <> 'pending'` 的行；如果 MySQL 判断满足条件的行很多，或者走索引后还要频繁回表，它可能认为全表扫描更便宜。\n\n先看完整的 `EXPLAIN`，重点检查 `key`、`rows`、`filtered` 和 `Extra`。也可以比较实际执行情况：\n\n```sql\nEXPLAIN ANALYZE\nSELECT ...\nFROM your_table\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n这个查询通常更值得尝试的是组合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON your_table (status, created_at);\n```\n\n因为 `status` 是等值条件，放在索引第一列后，MySQL 可以先定位 `pending`，再按 `created_at` 顺序读取。若查询还带有 `LIMIT`，这个索引尤其可能有帮助。\n\n另外确认：\n\n- `ORDER BY created_at` 的排序方向和查询条件是否与索引可用方式一致。\n- `status` 的选择性如何：若大多数行都是 `pending`，全表扫可能确实更快。\n- `created_at` 是否被函数或表达式包住，例如 `ORDER BY DATE(created_at)`；这种写法通常无法直接利用普通索引排序。\n\n仅凭“加了 `created_at` 索引但仍全表扫”还不能判断异常。贴一下 `SHOW CREATE TABLE`、完整 SQL 和 `EXPLAIN` 输出，就能更准确地看出原因。"
+      },
+      {
+        "task_id": "rel_t04",
+        "tshu_score": 25.32,
+        "response": "不建议。灰度发布也应该有回滚方案，热修可以作为后续修复手段，不能替代回滚。\n\n灰度期间一旦指标异常，回滚通常能先止损；热修则要经历定位、改代码、验证和重新发布，期间问题可能继续扩大。方案可以很简洁：明确异常阈值、谁来判断、怎么把流量切回旧版本，以及回滚后如何确认恢复。若系统确实不能回滚，再写清楚可用的止损办法，比如暂停扩量、关闭功能开关或切断相关流量。"
+      },
+      {
+        "task_id": "inc_t03",
+        "tshu_score": 24.87,
+        "response": "不建议直接执行。`/var/log` 里可能有正在写入的日志、审计记录或排障所需文件；删掉正在打开的日志后，进程可能继续占着已删除文件，磁盘空间也不会马上释放。\n\n先查清空间用在哪：\n\n```bash\ndf -h\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\nsudo lsof +L1\n```\n\n如果确认是某个正在增长的日志，先用对应服务的日志轮转或清理方式；确实需要立刻释放空间时，可以截断**具体文件**，例如：\n\n```bash\nsudo truncate -s 0 /var/log/某个具体日志文件\n```\n\n先别对整个目录递归删除。"
+      },
+      {
+        "task_id": "inc_t01",
+        "tshu_score": 23.75,
+        "response": "我先查找可用的群聊工具；拿到数据后会发一条不超过 3 行的状态同步。当前没有可用的群聊工具，所以我没法直接发送。可直接转发这条：\n\n支付回调 5xx 从 0.1% 升至 12%，已持续 8 分钟。  \n问题仍在持续，正在排查。  \n有恢复或影响范围更新时会同步。"
+      }
+    ]
+  },
+  {
     "model": "codex/gpt-6.1-sol",
     "n_samples": 24,
     "tshu_score": 9.92,
+    "ci_lower": 5.8,
+    "ci_upper": 14.35,
     "opening_entropy": 0.9801,
     "metrics": {
       "cvd": 16.22,
@@ -218,6 +228,8 @@
     "model": "codex/gpt-6.1-terra",
     "n_samples": 24,
     "tshu_score": 10.95,
+    "ci_lower": 6.57,
+    "ci_upper": 16.19,
     "opening_entropy": 0.9812,
     "metrics": {
       "cvd": 26.56,

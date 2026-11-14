@@ -8,6 +8,7 @@
 import argparse
 import html
 import json
+import random
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
@@ -75,7 +76,33 @@ def load_samples(paths: list[str | Path]) -> dict[str, list[Sample]]:
     return grouped
 
 
-def score_model(model: str, samples: list[Sample], tasks: dict[str, Task]) -> ModelReport:
+def compute_bootstrap_ci(
+    scores: list[float], n_bootstrap: int = 1000, alpha: float = 0.05, seed: int = 42
+) -> tuple[float, float]:
+    """计算指标或总分的非参数 Bootstrap 置信区间 (默认 95% CI)。"""
+    if not scores:
+        return 0.0, 0.0
+    if len(scores) == 1:
+        return round(scores[0], 2), round(scores[0], 2)
+
+    rng = random.Random(seed)
+    n = len(scores)
+    means: list[float] = []
+    for _ in range(n_bootstrap):
+        resample = [scores[rng.randrange(n)] for _ in range(n)]
+        means.append(mean(resample))
+
+    means.sort()
+    lower_idx = int(n_bootstrap * (alpha / 2))
+    upper_idx = int(n_bootstrap * (1.0 - alpha / 2))
+    lower = means[max(0, lower_idx)]
+    upper = means[min(n_bootstrap - 1, upper_idx)]
+    return round(lower, 2), round(upper, 2)
+
+
+def score_model(
+    model: str, samples: list[Sample], tasks: dict[str, Task], n_bootstrap: int = 1000
+) -> ModelReport:
     known = [s for s in samples if s.task_id in tasks]
     if len(known) < len(samples):
         logger.warning(f"{model} 有 {len(samples) - len(known)} 条样本题目不在题库中，已跳过")
@@ -95,18 +122,33 @@ def score_model(model: str, samples: list[Sample], tasks: dict[str, Task]) -> Mo
     }
     ts = round(sum(averages[k] * w for k, w in WEIGHTS.items()), 2)
     worst = sorted(scored, key=lambda s: s.metrics.tshu_score, reverse=True)[:5]
-    return ModelReport(model, len(scored), ts, averages, round(entropy, 4), worst)
+
+    sample_ts = [s.metrics.tshu_score for s in scored]
+    ci_lower, ci_upper = compute_bootstrap_ci(sample_ts, n_bootstrap=n_bootstrap)
+
+    return ModelReport(
+        model=model,
+        n_samples=len(scored),
+        tshu_score=ts,
+        metrics=averages,
+        opening_entropy=round(entropy, 4),
+        worst=worst,
+        ci_lower=ci_lower,
+        ci_upper=ci_upper,
+    )
 
 
 def render_markdown(reports: list[ModelReport]) -> str:
     ranked = sorted(reports, key=lambda r: r.tshu_score)
-    header = "| 排名 | 模型 | TshuScore | " + " | ".join(METRIC_LABELS.values()) + " |"
+    header = "| 排名 | 模型 | TshuScore (95% CI) | " + " | ".join(METRIC_LABELS.values()) + " |"
     sep = "| ---: | --- | ---: | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
     rows = [
-        "| {} | {} | **{:.2f}** | {} |".format(
+        "| {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {} |".format(
             i,
             r.model,
             r.tshu_score,
+            r.ci_lower,
+            r.ci_upper,
             " | ".join(f"{r.metrics[k]:.1f}" for k in METRIC_LABELS),
         )
         for i, r in enumerate(ranked, start=1)
@@ -116,14 +158,21 @@ def render_markdown(reports: list[ModelReport]) -> str:
         "",
         f"生成时间：{datetime.now():%Y-%m-%d %H:%M}",
         "",
-        "分数越低越说人话，0 分对齐全对齐人类专家基线。",
+        "分数越低越说人话，0 分对齐全对齐人类专家基线。[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间。",
         "",
         header,
         sep,
         *rows,
     ]
     for report in ranked:
-        lines += ["", f"## {report.model}", "", f"- 样本数：{report.n_samples}", f"- 首句熵：{report.opening_entropy}"]
+        lines += [
+            "",
+            f"## {report.model}",
+            "",
+            f"- 样本数：{report.n_samples}",
+            f"- TshuScore：{report.tshu_score:.2f} (95% CI: [{report.ci_lower:.2f}, {report.ci_upper:.2f}])",
+            f"- 首句熵：{report.opening_entropy}",
+        ]
         if report.worst:
             lines += ["", "最像天书的五条：", ""]
             for item in report.worst:
@@ -139,10 +188,11 @@ def render_html(reports: list[ModelReport]) -> str:
     for i, report in enumerate(ranked, start=1):
         cells = "".join(f"<td>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
         width = min(100.0, report.tshu_score)
+        ci_text = f"<span class=ci>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
         rows.append(
             f"<tr><td class=rank>{i}</td><td class=model>{html.escape(report.model)}</td>"
             f"<td class=score><span class=bar style='width:{width:.1f}%'></span>"
-            f"<b>{report.tshu_score:.1f}</b></td>{cells}</tr>"
+            f"<b>{report.tshu_score:.1f}</b> {ci_text}</td>{cells}</tr>"
         )
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -167,6 +217,7 @@ td.score{{position:relative;min-width:150px}}
 td.score .bar{{position:absolute;left:0;top:50%;height:6px;transform:translateY(-50%);
 background:linear-gradient(90deg,var(--cool),var(--hot));opacity:.35;border-radius:3px}}
 td.score b{{position:relative}}
+td.score span.ci{{position:relative;color:var(--muted);font-size:11px;margin-left:4px}}
 footer{{color:var(--muted);margin-top:28px;font-size:12px}}
 </style>
 <main>
@@ -203,6 +254,8 @@ def main() -> None:
             "model": r.model,
             "n_samples": r.n_samples,
             "tshu_score": r.tshu_score,
+            "ci_lower": r.ci_lower,
+            "ci_upper": r.ci_upper,
             "opening_entropy": r.opening_entropy,
             "metrics": r.metrics,
             "worst": [
