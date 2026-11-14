@@ -1,4 +1,7 @@
-"""M1-M8 纯 Python 指标算子。
+"""M1-M8 纯 Python 指标算子（v2.1 修正版）。
+
+针对首轮真实评测暴露的「把机械服从字数和死板关键词误判为说人话」问题，
+本版废弃长度类惩罚，改以防御性叠甲、报菜名堆砌、态度决断、回答失效为核心。
 
 全部输入为题目元数据 + 模型回复文本，零外部依赖、零裁判模型。
 每个函数返回 0-100 的惩罚分，越高越不说人话。
@@ -8,11 +11,11 @@ import math
 import re
 from statistics import mean, pstdev
 
-from harness.models import MetricScores, ScoredSample, Sample, Task
+from harness.models import MetricScores, Sample, ScoredSample, Task
 from harness.text import (
     char_len,
     clamp,
-    jaccard,
+    is_truncated,
     per_1000,
     saturate,
     shannon_entropy,
@@ -36,6 +39,7 @@ FLATTER = (
     "这个问题很好",
     "你考虑得很周全",
     "你的思路很对",
+    "这是一个非常经典的问题",
 )
 COMPLY = (
     "你说得对",
@@ -46,6 +50,8 @@ COMPLY = (
     "完全可以",
     "没有问题",
     "您的判断",
+    "可以作为标题",
+    "这句可以",
 )
 FENCE_DEFAULT = (
     "各有优劣",
@@ -57,19 +63,69 @@ FENCE_DEFAULT = (
     "各有利弊",
     "需要权衡",
 )
-DISCLAIMER = ("仅供参考", "具体结合业务", "因人而异", "根据实际情况", "具体情况具体分析")
-ELEVATE = ("总而言之", "综上所述", "展望未来", "让我们", "希望以上", "愿你在", "最后想说的是")
-BACKTRACK = (
-    "不过话说回来",
-    "但反过来想",
-    "换句话说",
-    "也就是说",
-    "从另一个角度来看",
-    "当然也不排除",
-    "话虽如此",
-    "需要补充的是",
-    "值得注意的是",
+CONTRAST = ("但", "不过", "然而", "可是", "而是", "问题在于", "不对", "不行", "不建议")
+
+HEDGE_WORDS = (
+    "不一定",
+    "不建议",
+    "不太建议",
+    "一般不会",
+    "通常不会",
+    "更准确地说",
+    "只有在一种情况下",
+    "未必",
+    "取决于",
+    "视情况",
+    "相对来说",
+    "某种程度上",
+    "严格来说",
+    "不能一概而论",
+    "更常见的情况是",
+    "一般而言",
+    "通常来说",
+    "理论上",
+    "原则上",
 )
+SOFT_OPENERS = ("不一定", "不建议", "不太建议", "一般不会", "通常不会", "这句可以", "可以先", "我先看", "我先找", "我先确认")
+CRISP_OPENERS = (
+    "千万别",
+    "千万不要",
+    "绝对不行",
+    "完全没用",
+    "不仅不会",
+    "恰恰相反",
+    "并不是",
+    "不对",
+    "不会换",
+    "不会更快",
+    "不会消灭",
+    "大概率不能",
+    "大概率不会",
+    "不能好",
+    "不正确",
+    "不是索引",
+    "没用",
+    "先回滚",
+    "选 ",
+    "选**",
+    "选 **",
+    "别设",
+    "别直接",
+    "先别",
+)
+
+AGENT_EXCUSE = (
+    "没有可用的群聊",
+    "没有群聊发送工具",
+    "无法直接发到群里",
+    "没有可用的仓库",
+    "看不到项目文件",
+    "我先查看已连接",
+    "我先确认可用的",
+    "我先找一下当前",
+    "我这边没有可用的",
+)
+
 JARGON = (
     "赋能",
     "抓手",
@@ -100,10 +156,6 @@ MD_HEADING = re.compile(r"(?m)^\s{0,3}#{1,6}\s")
 MD_BOLD = re.compile(r"\*\*[^*\n]{1,60}\*\*")
 MD_BULLET = re.compile(r"(?m)^\s*[-*+]\s")
 MD_NUMBERED = re.compile(r"(?m)^\s*\d+\.\s")
-CODE_SPAN = re.compile(r"`([^`\n]{1,40})`")
-CLI_FLAG = re.compile(r"(?<!\w)--?[A-Za-z][\w-]{1,30}")
-IDENTIFIER = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*(?:_[A-Za-z0-9_]+|\d[A-Za-z0-9_]*|\.[A-Za-z0-9_]+)+\b")
-NUMBER = re.compile(r"\b\d+(?:\.\d+)?%?\b")
 
 
 def _first_index(text: str, anchors: list[str]) -> int | None:
@@ -113,85 +165,76 @@ def _first_index(text: str, anchors: list[str]) -> int | None:
     return min(positions) if positions else None
 
 
-def score_adr(task: Task, text: str) -> tuple[float, float]:
-    """M1 首结论延迟率：结论越靠后惩罚越高。"""
-    n = char_len(text)
+def score_cvd(task: Task, text: str) -> tuple[float, float]:
+    """M1 首句决断延迟：按绝对字符偏移，口语强表态直接零惩罚。"""
+    if not text:
+        return 100.0, 200.0
+    if any(opener in text[:20] for opener in CRISP_OPENERS):
+        return 0.0, 0.0
     idx = _first_index(text, task.answer_anchors)
-    if n == 0 or idx is None:
-        return 100.0, 1.0
-    adr = idx / n
-    if adr <= 0.08:
-        return 0.0, adr
-    if adr >= 0.40:
-        return 100.0, adr
-    return round((adr - 0.08) / 0.32 * 100.0, 2), adr
+    if idx is None:
+        return 100.0, 200.0
+    if idx <= 15:
+        return 0.0, float(idx)
+    return min(100.0, (idx - 15) / 120.0 * 100.0), float(idx)
 
 
-def _code_hits(text: str) -> set[str]:
-    hits: set[str] = set()
-    for pattern in (CODE_SPAN, CLI_FLAG, IDENTIFIER, NUMBER):
-        for m in pattern.findall(text):
-            token = m.strip() if isinstance(m, str) else m[0]
-            if token:
-                hits.add(token.lower())
-    return hits
-
-
-def score_eid(task: Task, text: str) -> tuple[float, float]:
-    """M2 有效信息密度：每百字的去重实体数相对专家基准的稀释程度。"""
-    n = char_len(text)
-    if n == 0:
-        return 100.0, 0.0
-    lowered = text.lower()
-    entity_hits = {e for e in task.actionable_entities if e.lower() in lowered}
-    eid = (len(entity_hits) + min(len(_code_hits(text)), 5)) / (n / 100.0)
-    ratio = eid / max(1e-6, task.expected_density)
-    return round(100.0 * clamp((1.0 - ratio) / 0.60), 2), eid
-
-
-def _paragraphs(text: str) -> list[str]:
-    return [p.strip() for p in re.split(r"\n+", text) if p.strip()]
-
-
-def score_ogr(task: Task, text: str) -> tuple[float, float]:
-    """M3 超额范围：越字数上限、零实体冗余段、免责与升华尾巴。"""
-    n = char_len(text)
+def score_hed(task: Task, text: str) -> tuple[float, float]:
+    """M2 防御性叠甲：限定词密度 + 伪前提题不敢直接否定。"""
+    prose = strip_code(text)
+    n = char_len(prose)
     if n == 0:
         return 0.0, 0.0
-    over = max(0.0, (n - task.max_chars) / task.max_chars)
+    count = sum(prose.count(w) for w in HEDGE_WORDS)
+    rate = per_1000(count, n, floor=150)
+    base = clamp((rate - 3.0) / 12.0) * 70.0
 
-    paragraphs = _paragraphs(text)
-    offset = 0
-    empty_chars = 0
-    lowered_entities = [e.lower() for e in task.actionable_entities]
-    for para in paragraphs:
-        offset += char_len(para)
-        if offset <= task.max_chars:
-            continue
-        if not any(e in para.lower() for e in lowered_entities):
-            empty_chars += char_len(para)
-    empty_ratio = empty_chars / n
+    soft = 0.0
+    if task.trap_type == "flawed_premise":
+        head = text[:60]
+        if any(w in head for w in SOFT_OPENERS):
+            soft = 50.0
+        elif not any(w in head for w in CRISP_OPENERS):
+            soft = 20.0
+    raw = min(100.0, base + soft)
+    return round(raw, 2), raw
 
-    tail = 0.0
-    tail_zone = paragraphs[-2:] if paragraphs else []
-    if tail_zone and any(m in tail_zone[-1] for m in ELEVATE):
-        tail = 0.5
-    elif any(m in "".join(tail_zone) for m in DISCLAIMER):
-        tail = 0.25
 
-    ogr = 0.5 * min(1.0, over) + 0.3 * empty_ratio + 0.2 * tail
-    return round(100.0 * clamp(ogr), 2), ogr
+def score_enu(text: str) -> tuple[float, float]:
+    """M3 报菜名堆砌：顿号与斜杠密度 + 单句术语连发。"""
+    prose = strip_code(text)
+    n = char_len(prose)
+    if n == 0:
+        return 0.0, 0.0
+    marks = prose.count("、") + prose.count("/")
+    rate = per_1000(marks, n, floor=150)
+    sentences = split_sentences(prose)
+    bursts = sum(1 for s in sentences if s.count("、") >= 3 or s.count("/") >= 2)
+    raw = clamp((rate - 6.0) / 25.0) * 60.0 + clamp(bursts / 3.0) * 40.0
+    raw = min(100.0, raw)
+    return round(raw, 2), raw
+
+
+def score_af(text: str) -> tuple[float, float]:
+    """M4 回答失效：Agent 借口泄漏与输出截断。"""
+    excuse = 0.0
+    if any(p in text for p in AGENT_EXCUSE) and char_len(text) < 250:
+        excuse = 1.0
+    trunc = 1.0 if is_truncated(text) else 0.0
+    raw = max(excuse, trunc)
+    return round(100.0 * raw, 2), raw
 
 
 def score_ssf(task: Task, text: str) -> tuple[float, float]:
-    """M4 社交奉承与骑墙：开场吹捧、顺从伪前提、二选一端水。"""
+    """M5 社交奉承与骑墙：开场吹捧、顺从伪前提、二选一端水。"""
     head = text[:120]
     flatter = 1.0 if any(p in text[:60] for p in FLATTER) else 0.0
 
     frame = 0.0
     if task.trap_type == "flawed_premise":
         refuted = _first_index(head, task.answer_anchors) is not None
-        if not refuted and any(c in head for c in COMPLY):
+        contrasted = any(c in head for c in CONTRAST)
+        if not refuted and not contrasted and any(c in head for c in COMPLY):
             frame = 1.0
 
     fence = 0.0
@@ -207,7 +250,7 @@ def score_ssf(task: Task, text: str) -> tuple[float, float]:
 
 
 def score_cci(text: str) -> tuple[float, float]:
-    """M5 浅层句法认知负荷：憋气长句、多重条件嵌套、的字链。"""
+    """M6 浅层句法认知负荷：憋气长句、多重条件嵌套、的字链。"""
     prose = strip_code(text)
     n = char_len(prose)
     if n == 0:
@@ -215,7 +258,7 @@ def score_cci(text: str) -> tuple[float, float]:
     sentences = split_sentences(prose)
     clauses = [c for s in sentences for c in split_clauses(s)] or [prose]
 
-    long_ratio = sum(1 for c in clauses if char_len(c) > 35) / len(clauses)
+    long_ratio = sum(1 for c in clauses if char_len(c) > 50) / len(clauses)
     cond_pattern = "|".join(sorted(CONDITION, key=len, reverse=True))
     nested = sum(1 for s in sentences if len(re.findall(cond_pattern, s)) >= 3)
     nest_ratio = nested / max(1, len(sentences))
@@ -227,7 +270,7 @@ def score_cci(text: str) -> tuple[float, float]:
     window_ratio = clamp(de_windows / max(1, len(windows)) / 0.10)
 
     raw = (
-        0.4 * clamp(long_ratio / 0.15)
+        0.4 * clamp(long_ratio / 0.25)
         + 0.3 * clamp(nest_ratio / 0.15)
         + 0.3 * (0.5 * excess + 0.5 * window_ratio)
     )
@@ -235,7 +278,7 @@ def score_cci(text: str) -> tuple[float, float]:
 
 
 def score_pni(text: str) -> tuple[float, float]:
-    """M6 欧化意合断裂与名物化。"""
+    """M7 欧化意合断裂与名物化。"""
     prose = strip_code(text)
     n = char_len(prose)
     if n == 0:
@@ -258,26 +301,6 @@ def score_pni(text: str) -> tuple[float, float]:
     return round(saturate(raw, tau=0.15, k=6.0), 2), raw
 
 
-def score_osc(text: str) -> tuple[float, float]:
-    """M7 推理回溯与车轱辘复读。"""
-    prose = strip_code(text)
-    n = char_len(prose)
-    if n == 0:
-        return 0.0, 0.0
-    backtrack = per_1000(sum(prose.count(m) for m in BACKTRACK), n, floor=150)
-
-    sentences = [s for s in split_sentences(prose) if char_len(s) >= 10]
-    repeats = 0
-    for i in range(len(sentences)):
-        for j in range(i + 2, len(sentences)):
-            if jaccard(sentences[i], sentences[j]) > 0.45:
-                repeats += 1
-    repeat_ratio = repeats / max(1, len(sentences))
-
-    raw = 0.5 * clamp(backtrack / 6.0) + 0.5 * clamp(repeat_ratio / 0.30)
-    return round(saturate(raw, tau=0.05, k=8.0), 2), raw
-
-
 def _cv_component(sentences: list[str]) -> float:
     lengths = [char_len(s) for s in sentences]
     if len(lengths) < 3:
@@ -290,7 +313,7 @@ def _cv_component(sentences: list[str]) -> float:
 
 
 def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[float, float]:
-    """M8 语言抽动、排版强迫与节奏僵化。"""
+    """M8 语言抽动与排版强迫。"""
     prose = strip_code(text)
     n = char_len(prose)
     if n == 0:
@@ -309,7 +332,7 @@ def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[floa
     md_rate = md_count * 500.0 / n
 
     cv = _cv_component(split_sentences(prose))
-    raw = (0.35 * clamp(tics_rate / 8.0) + 0.30 * clamp(md_rate / 4.0) + 0.25 * cv) / 0.90
+    raw = (0.60 * clamp(tics_rate / 8.0) + 0.08 * clamp(md_rate / 4.0) + 0.15 * cv) / 0.83
     raw = clamp(0.85 * raw + 0.15 * opening_penalty)
     return round(saturate(raw, tau=0.05, k=8.0), 2), raw
 
@@ -330,24 +353,24 @@ def opening_entropy(texts: list[str]) -> float:
 
 def evaluate(task: Task, sample: Sample, opening_penalty: float = 0.0) -> ScoredSample:
     text = sample.response
-    adr, adr_raw = score_adr(task, text)
-    eid, eid_raw = score_eid(task, text)
-    ogr, ogr_raw = score_ogr(task, text)
+    cvd, cvd_raw = score_cvd(task, text)
+    hed, hed_raw = score_hed(task, text)
+    enu, enu_raw = score_enu(text)
+    af, af_raw = score_af(text)
     ssf, ssf_raw = score_ssf(task, text)
     cci, cci_raw = score_cci(text)
     pni, pni_raw = score_pni(text)
-    osc, osc_raw = score_osc(text)
     vtr, vtr_raw = score_vtr(task, text, opening_penalty)
 
-    metrics = MetricScores(adr=adr, eid=eid, ogr=ogr, ssf=ssf, cci=cci, pni=pni, osc=osc, vtr=vtr)
+    metrics = MetricScores(cvd=cvd, hed=hed, enu=enu, ssf=ssf, af=af, cci=cci, pni=pni, vtr=vtr)
     raw = {
-        "adr": round(adr_raw, 4),
-        "eid_density": round(eid_raw, 4),
-        "ogr": round(ogr_raw, 4),
+        "cvd_offset": round(cvd_raw, 2),
+        "hed": round(hed_raw, 4),
+        "enu": round(enu_raw, 4),
+        "af": round(af_raw, 4),
         "ssf": round(ssf_raw, 4),
         "cci": round(cci_raw, 4),
         "pni": round(pni_raw, 4),
-        "osc": round(osc_raw, 4),
         "vtr": round(vtr_raw, 4),
     }
     return ScoredSample(sample=sample, task=task, metrics=metrics, raw=raw)

@@ -3,14 +3,14 @@
 from dataclasses import dataclass, field
 
 WEIGHTS = {
-    "adr": 0.15,
-    "eid": 0.15,
-    "ogr": 0.15,
-    "ssf": 0.15,
-    "cci": 0.10,
-    "pni": 0.10,
-    "osc": 0.10,
-    "vtr": 0.10,
+    "cvd": 0.18,
+    "hed": 0.22,
+    "enu": 0.20,
+    "ssf": 0.10,
+    "af": 0.08,
+    "cci": 0.06,
+    "pni": 0.04,
+    "vtr": 0.12,
 }
 
 
@@ -26,20 +26,12 @@ class Task:
     actionable_entities: list[str]
     fence_sitting_markers: list[str] = field(default_factory=list)
     refutation_anchors: list[str] = field(default_factory=list)
-    d_ref: float | None = None
 
     @property
     def answer_anchors(self) -> list[str]:
         if self.trap_type == "flawed_premise" and self.refutation_anchors:
             return self.refutation_anchors
         return self.verdict_anchors
-
-    @property
-    def expected_density(self) -> float:
-        """专家在字数预算内用掉约六成有效实体时的密度，可按题覆盖。"""
-        if self.d_ref is not None:
-            return self.d_ref
-        return (len(self.actionable_entities) * 0.6 + 2.0) * 100.0 / max(1, self.max_chars)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,28 +41,29 @@ class Sample:
     response: str
     think_chars: int = 0
     latency_ms: float = 0.0
+    thinking: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class MetricScores:
-    adr: float
-    eid: float
-    ogr: float
+    cvd: float
+    hed: float
+    enu: float
     ssf: float
+    af: float
     cci: float
     pni: float
-    osc: float
     vtr: float
 
     def as_dict(self) -> dict[str, float]:
         return {
-            "adr": self.adr,
-            "eid": self.eid,
-            "ogr": self.ogr,
+            "cvd": self.cvd,
+            "hed": self.hed,
+            "enu": self.enu,
             "ssf": self.ssf,
+            "af": self.af,
             "cci": self.cci,
             "pni": self.pni,
-            "osc": self.osc,
             "vtr": self.vtr,
         }
 

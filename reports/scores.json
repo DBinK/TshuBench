@@ -1,388 +1,259 @@
 [
   {
-    "model": "auto/claude-haiku-5-5",
+    "model": "auto/gemini-3.8-flash",
     "n_samples": 24,
-    "tshu_score": 28.08,
-    "opening_entropy": 0.9535,
+    "tshu_score": 7.03,
+    "opening_entropy": 0.9519,
     "metrics": {
-      "adr": 48.18,
-      "eid": 64.56,
-      "ogr": 40.83,
+      "cvd": 6.67,
+      "hed": 0.0,
+      "enu": 15.69,
       "ssf": 0.0,
-      "cci": 12.86,
-      "pni": 6.89,
-      "osc": 0.0,
-      "vtr": 30.65
+      "af": 4.17,
+      "cci": 5.96,
+      "pni": 6.81,
+      "vtr": 14.44
     },
     "worst": [
       {
-        "task_id": "clr_t06",
-        "tshu_score": 44.02,
-        "response": "**选 Redux（即 Redux Toolkit）。**\n\n理由：\n\n- **中台是长期演进的项目**，模块多、生命周期长，Redux 的约定式结构（slice、统一的 action 与 reducer 模式）能让 5 个人写出风格一致的代码，新人也容易接手。\n- **状态共享和副作用复杂**：权限、字典、多标签页、全局配置等常需跨模块协作，Redux 的中间件体系和 RTK Query 能统一处理异步请求与缓存。\n- **调试和可追溯性好**：Redux DevTools 可以回放 action、看状态变化，对排查中台里的复杂业务问题很有帮助。\n- **生态成熟**：与 React 生态（如各类中间件、团队规范、文档）结合紧密，招人和培训成本低。\n\nZustand 更轻、上手快，适合中小型或状态简单的项目。但对一个 5 人团队的中台来说，它的自由度可能让代码风格逐渐分化，后期反而需要自己补规范。"
-      },
-      {
-        "task_id": "rel_t03",
-        "tshu_score": 41.68,
-        "response": "不建议这样写。这句话看完，用户并不知道自己能得到什么，反而可能觉得\"这版是不是没什么实际改动\"。\n\n用户不需要懂技术细节，但需要知道**这次更新对他们有什么影响**。可以这样改：\n\n**不推荐：**\n> 全面升级系统架构，赋能业务增长。\n\n**推荐：**\n> **新增**\n> - 支持批量导出报表，一次可导出 1000 条数据\n>\n> **优化**\n> - 页面加载速度提升约 40%，打开列表不再卡顿\n> - 搜索结果更精准，可按创建时间筛选\n>\n> **修复**\n> - 修复了部分用户无法上传图片的问题\n> - 修复了通知偶尔延迟的问题\n\n写法建议：\n\n1. **说用户能感受到的变化**：快了、新增了什么、修了什么问题。\n2. **用动词开头、具体可验证**：比\"提升体验\"更有说服力。\n3. **不写术语，但别模糊**：不说\"微服务重构\"，但可以说\"系统更稳定，故障恢复时间缩短\"。\n4. **分类呈现**：新增、优化、修复，用户扫一眼就能抓住重点。\n5. **技术细节另存**：给开发、运维或内部团队的变更记录可以写详细些，两份文档并不冲突。\n\n如果你告诉我这次更新的具体内容，我可以帮你改写成面向用户的版本。"
-      },
-      {
-        "task_id": "clr_t03",
-        "tshu_score": 40.71,
-        "response": "**不一定。** 增大堆只是推迟 Full GC 的出现时间，通常不能消除它。\n\n### 为什么增大堆不一定有用\n\n1. **Full GC 的触发原因有很多，堆大小只影响其中一部分**\n   - 老年代空间不足，无法容纳晋升的对象\n   - 内存泄漏，老年代中的存活对象持续增长\n   - 代码或框架中显式调用了 `System.gc()`（可用 `-XX:+DisableExplicitGC` 禁用，但要先确认这样做的影响）\n   - 元空间（Metaspace）不足，动态类加载或类泄漏导致\n   - CMS 的 Concurrent Mode Failure，或 G1 的 To-space Exhausted、Humongous 对象分配失败\n2. **如果存在内存泄漏，堆越大只会让 Full GC 间隔变长，最终仍会出现**，而且每次回收的存活对象更多，单次停顿可能更长。\n3. **堆变大后，单次 Full GC 的停顿可能更久**。尤其是 Serial 或 Parallel GC，停顿时间大致与存活对象数量成正比。\n\n### 建议的排查步骤\n\n1. **确认 Full GC 的原因和频率**\n   ```bash\n   # JDK 8 及以下\n   -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:gc.log\n   # JDK 9 及以上\n   -Xlog:gc*:file=gc.log:time,uptime,level,tags\n   ```\n   或使用 `jstat -gcutil <pid> 1000` 实时观察。\n2. **看 GC 日志中的 Full GC 原因**：是 Allocation Failure、Metadata GC Threshold、System.gc() 还是其他？\n3. **如果老年代持续上涨、Full GC 后回收不掉**，用 `jmap -histo:live <pid>` 或导出 heap dump（`jmap -dump:live,format=b,file=heap.hprof <pid>`），用 MAT、JProfiler 等工具分析泄漏点。\n4. **如果 Full GC 后老年代能回收大部分空间，只是阈值偏低**，才适合通过调整堆比例、晋升阈值或换用 G1/ZGC 等收集器来优化。\n5. **检查堆的使用模式**：大对象过多、短期对象晋升过快（`-XX:MaxTenuringThreshold`、Survivor 区太小）等都会导致老年代过早填满。\n\n### 总结\n\n加大堆是一个“扩容”手段，适合在确认是“正常负载下堆确实不够用”时使用。如果是泄漏、显式 GC 调用或收集器配置问题，应该先定位根因。你可以把 GC 日志中 Full GC 的片段和 JVM 版本、收集器、当前参数贴出来，我可以帮你具体分析。"
-      },
-      {
-        "task_id": "inc_t04",
-        "tshu_score": 40.25,
-        "response": "**不一定。** CrashLoopBackOff 的含义是容器反复启动后退出，K8s 在两次重启之间逐步拉长等待时间。`livenessProbe` 只是退出原因之一，所以先确认是不是它导致的。\n\n## 先判断原因\n\n```bash\nkubectl describe pod <pod-name>\nkubectl logs <pod-name> --previous    # 看上一次崩溃的日志\n```\n\n重点看 `describe` 输出里 `Last State` 的信息：\n\n| 现象 | 原因 | 调大 initialDelaySeconds 有用吗 |\n|---|---|---|\n| `Reason: Error`，退出码非 0，日志里有异常堆栈 | 应用自身启动失败（配置错误、依赖连不上、代码 bug） | **没用**，只会掩盖问题 |\n| `Reason: OOMKilled`（退出码 137） | 内存超限 | **没用**，要调大 memory limit |\n| 事件里有 `Liveness probe failed` 且容器被 kill | 应用启动慢，探针过早失败 | **有用** |\n| 退出码 127 / 126 | 启动命令或可执行文件不存在 | **没用**，检查 command/args/镜像 |\n\n## 如果确实是探针太早杀掉\n\n不建议直接把 `initialDelaySeconds` 设成 300，更推荐用 `startupProbe`，它专门处理慢启动，启动完成前不会执行 liveness 检查：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  failureThreshold: 30     # 最多等 30 * 10 = 300 秒\n  periodSeconds: 10\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 3\n```\n\n这样启动完成后，liveness 能快速发现真正的死锁或卡死。\n\n## 总结\n\n先看 `kubectl logs --previous` 和 `describe` 的退出原因。如果是应用本身报错或 OOM，改探针无效，要修应用或资源配置。如果只是启动慢被探针误杀，用 `startupProbe` 比单纯加大延迟更合适。如果你把日志或 describe 的关键输出贴出来，我可以帮你进一步定位。"
-      },
-      {
         "task_id": "inc_t03",
-        "tshu_score": 38.2,
-        "response": "不建议直接 `rm -rf /var/log/*`。它不一定最快，还可能让服务出问题。\n\n**风险：**\n- 很多服务依赖 `/var/log` 下的子目录（如 `nginx/`、`mysql/`、`journal/`），删掉后服务可能启动失败或写日志报错。\n- 正在写入的日志文件被删后，进程仍持有文件句柄，**空间不会释放**，还会导致你查不到日志。\n- 你可能误删排查故障所需的日志，比如刚发生的报错信息。\n\n**更安全快速的做法：**\n\n1. **先定位占用大的目录和文件：**\n   ```bash\n   du -xh --max-depth=1 / | sort -rh | head -20\n   du -sh /var/log/* | sort -rh | head -20\n   ```\n\n2. **清空大日志文件，而不是删除（保留文件句柄）：**\n   ```bash\n   : > /var/log/某个大文件.log\n   # 或\n   truncate -s 0 /var/log/某个大文件.log\n   ```\n\n3. **如果用 systemd journal，限制大小：**\n   ```bash\n   journalctl --disk-usage\n   sudo journalctl --vacuum-size=200M\n   # 或只保留最近 7 天\n   sudo journalctl --vacuum-time=7d\n   ```\n\n4. **删除旧的归档日志**（如 `*.gz`、`*.1`、`*.old`）：\n   ```bash\n   find /var/log -type f \\( -name \"*.gz\" -o -name \"*.1\" -o -name \"*.old\" \\) -mtime +7 -delete\n   ```\n\n5. **检查\"已删除但仍被占用\"的文件**，这种文件空间不释放：\n   ```bash\n   lsof +L1\n   ```\n   找到对应进程后，重启该服务即可释放空间。\n\n6. **其他常见占用**：\n   ```bash\n   apt-get clean              # Debian/Ubuntu 包缓存\n   docker system prune -a     # 如果装了 Docker（注意会删未使用镜像）\n   ```\n\n**建议顺序：** 先 `du` 定位 → 清理旧归档和 journal → 对大日志用 `truncate` → `lsof +L1` 检查 → 最后再考虑是否扩容磁盘或配置 logrotate 防止复发。\n\n如果你告诉我 `du` 的输出结果，我可以帮你判断具体清理哪些。"
+        "tshu_score": 22.23,
+        "response": "**千万别直接执行 `rm -rf /var/log/*`！** \n\n虽然它看起来最快，但会带来两个严重的后果：\n\n1. **磁盘空间可能根本释放不出来（最常见）：** \n   正在运行的服务（如 Nginx、MySQL、rsyslog 等）仍然持有这些日志文件的“文件句柄”。你用 `rm` 删除了文件名，但进程没释放，**`df -h` 依然显示 100%**。\n2. **导致部分服务崩溃或无法记录日志：** \n   直接清空会把 `/var/log/` 下的子目录（如 `/var/log/nginx/`、`/var/log/audit/`）一并删除。很多服务启动时如果发现自己的日志目录不存在，或者权限/属主不对，会**直接报错退出**。\n\n---\n\n### 正确、最快且安全的清理姿势：\n\n请按以下顺序执行，既能瞬间释放大量空间，又不会搞崩服务：\n\n#### 第一步：清理 systemd 日志（通常占用了几个 G 到几十 G）\n现代 Linux 系统中，这部分往往是元凶，有专门的命令安全清理：\n```bash\n# 只保留最近 3 天的 journal 日志\njournalctl --vacuum-time=3d\n\n# 或者限制 journal 日志总大小在 200M 以内\njournalctl --vacuum-size=200M\n```\n\n#### 第二步：安全删除“历史归档”日志（无进程占用，直接删）\n那些以 `.gz`、`.1`、`.old` 结尾的日志是历史备份，服务不会占用它们，可以直接删除：\n```bash\n# 找到并删除所有的压缩日志和轮转日志\nfind /var/log -type f \\( -name \"*.gz\" -o -name \"*.[0-9]\" -o -name \"*.old\" \\) -delete\n```\n\n#### 第三步：对正在写入的大日志进行“清空（截断）”而非删除\n**核心技巧：清空文件内容，但保留文件本身和句柄。** 这样**空间瞬间释放**，而且服务不需要重启。\n\n1. 先找出是哪个日志文件最大：\n   ```bash\n   du -sh /var/log/* | sort -hr | head -n 5\n   ```\n2. 假设发现 `syslog`、`messages` 或某个 `access.log` 有几十个 G，用 `>` 清空它：\n   ```bash\n   > /var/log/syslog\n   > /var/log/messages\n   # 或者针对大文件（示例）：\n   # truncate -s 0 /var/log/nginx/access.log\n   ```\n\n---\n\n### 救急：如果你已经手快执行了 `rm -rf` 怎么办？\n\n如果已经删了，且 `df -h` 显示磁盘依然是满的：\n\n1. **找出被删除但仍被进程占用的文件：**\n   ```bash\n   lsof | grep deleted | grep /var/log\n   ```\n2. **释放它们：**\n   * 最快的方法是**重启对应的服务**（比如看到是 `rsyslogd` 占着，就 `systemctl restart rsyslog`；是 `nginx` 就 `systemctl restart nginx`）。服务重启后，空间会立即释放。\n   * 如果子目录没了导致服务起不来，需要手动把对应的目录建回来，并赋予正确的权限（如 `mkdir /var/log/nginx && chown nginx:nginx /var/log/nginx`）。"
+      },
+      {
+        "task_id": "inc_t01",
+        "tshu_score": 21.33,
+        "response": "【故障同步】支付回调 5xx 突增至 12%（持续 8 min），部分订单支付状态更新延迟。  \n【排查进展】值班人员已介入，正在紧急排查回调网关负载与下游依赖。  \n【后续安排】预计 10 分钟后同步最新排查及恢复进展。"
+      },
+      {
+        "task_id": "clr_t02",
+        "tshu_score": 18.39,
+        "response": "启动容器时加上 `-e TZ=Asia/Shanghai` 参数即可（或挂载宿主机时区 `-v /etc/localtime:/etc/localtime:ro`）。"
+      },
+      {
+        "task_id": "clr_t06",
+        "tshu_score": 14.44,
+        "response": "只选一个：**Zustand**。\n\n理由如下：\n\n1. **中台的业务本质**：中台项目 80% 的状态是“服务端缓存”（表格数据、下拉列表）。真正的全局客户端状态（用户信息、权限、主题、标签页）非常少。用 Redux 太重，属于**杀鸡用牛刀**。\n2. **5 人团队的开发效率**：5 人团队追求的是交付速度和低心智负担。Zustand **零样板代码**、不需要 `Provider` 顶层包裹、开箱即用，上手只需 10 分钟。Redux（即使是 RTK）依然有较高的概念和代码样板成本。\n3. **团队管理成本**：Redux 严格的 Action/Reducer 模式是为了应对“几十人协作防止写崩”，而 5 人团队的代码规范完全可以通过简单的 Code Review 约束，Zustand 的灵活性带来的收益远大于风险。\n\n*(最佳实践建议：Zustand 负责全局客户端状态 + TanStack Query (React Query) 负责服务端接口缓存，这是目前中台开发的最爽组合。)*"
+      },
+      {
+        "task_id": "rel_t01",
+        "tshu_score": 12.47,
+        "response": "- **【新增】** 支持将数据导出为 CSV 格式文件\n- **【修复】** 修复了特定场景下订单重复提交的问题\n- **【升级】** Redis 升级至 7.2 版本，提升系统性能与稳定性"
       }
     ]
   },
   {
     "model": "auto/deepseek-v4.1-flash",
     "n_samples": 24,
-    "tshu_score": 18.19,
-    "opening_entropy": 0.9812,
+    "tshu_score": 11.01,
+    "opening_entropy": 0.9895,
     "metrics": {
-      "adr": 45.29,
-      "eid": 32.42,
-      "ogr": 19.12,
+      "cvd": 12.01,
+      "hed": 10.72,
+      "enu": 26.35,
       "ssf": 0.0,
-      "cci": 11.37,
-      "pni": 1.51,
-      "osc": 0.0,
-      "vtr": 23.73
+      "af": 0.0,
+      "cci": 2.68,
+      "pni": 0.94,
+      "vtr": 8.49
     },
     "worst": [
       {
-        "task_id": "rel_t03",
-        "tshu_score": 43.1,
-        "response": "这句可以作为**标题/摘要**，但不建议只写这一句。对用户来说，“系统架构升级、赋能业务增长”偏空泛，用户虽然看不懂技术细节，但会关心：**对我有什么影响？要不要操作？有没有新功能/更快更稳？**\n\n建议写成“一句高层概括 + 一句用户可感知影响”：\n\n> **全面升级系统架构，提升稳定性与响应速度**  \n> 本次更新优化了底层架构，系统运行更稳定、响应更流畅，并为后续功能升级打好基础。您无需任何操作。\n\n如果是对外发布说明，可以把“赋能业务增长”换成用户视角：\n\n> **系统架构全面升级，使用更稳定、更流畅**  \n> 本次更新优化了底层架构，提升系统稳定性和响应速度。您无需额外操作。\n\n所以：**当标题可以，正文最好补一句用户能感知的变化。**"
+        "task_id": "inc_t03",
+        "tshu_score": 51.29,
+        "response": "不建议。`rm -rf /var/log/*` **不是推荐做法**，哪怕看起来最快。`/var/log` 下不只有普通日志：有正在写入的日志、服务子目录、权限、审计/安全日志，可能还有挂载点或容器日志。直接删目录会导致服务报错、权限丢失、审计合规问题；如果某个子目录是挂载点，甚至可能清空别的盘。并且正在写的日志被 `rm` 后空间可能不会立刻释放，进程还持有 fd。\n\n建议按这个顺序处理：\n\n```bash\n# 1. 先定位哪里满：空间、inode、日志目录、已删除但仍被占用的文件\ndf -hT\ndf -i\ndu -xhd1 /var/log | sort -h\ndu -xhd1 /var | sort -h\nlsof +L1 | head -50\nfind /var/log -xdev -type f -size +200M -printf '%s\\t%p\\n' | sort -nr | head -30\nfindmnt -R /var/log\n```\n\n```bash\n# 2. 清可再生的 journal\njournalctl --disk-usage\njournalctl --vacuum-size=500M\n# 或 journalctl --vacuum-time=7d\n```\n\n```bash\n# 3. 删除明确可再生的旧轮转日志，先 print 确认再 delete\nfind /var/log -xdev -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' \\) -mtime +7 -print\nfind /var/log -xdev -type f \\( -name '*.gz' -o -name '*.old' -o -name '*.1' \\) -mtime +7 -delete\n```\n\n```bash\n# 4. 正在写的大日志不要 rm，用 truncate 保留 inode/权限，立即释放空间\ntruncate -s 0 /var/log/xxx.log\n# 或优先用 logrotate\nlogrotate -f /etc/logrotate.conf\n```\n\n```bash\n# 5. 清包缓存\napt-get clean        # Debian/Ubuntu\nyum clean all        # CentOS/RHEL 旧版\ndnf clean all        # Fedora/RHEL 新版\n```\n\n如果有 Docker，再查：\n\n```bash\ndocker system df\nfind /var/lib/docker/containers -name '*-json.log' -type f -exec truncate -s 0 {} \\;\n```\n\n核心原则：**不要一把梭 `rm -rf /var/log/*`；不要删目录；只删明确可再生的文件；活动日志用 `truncate` 或 logrotate；先确认没有子挂载点和审计日志。**"
       },
       {
         "task_id": "inc_t04",
-        "tshu_score": 38.18,
-        "response": "不一定。把 `livenessProbe.initialDelaySeconds` 调到 300 **只有在一种情况下可能“好”**：你的容器启动很慢，且在应用还没起来时被 liveness 探针误杀，导致反复重启。否则它只是延迟探测，不能修复真正的 CrashLoopBackOff 根因，还可能掩盖问题、拖慢故障恢复。\n\n先别急着改，先确认是谁让容器退出的：\n\n```bash\nkubectl describe pod <pod> -n <ns>\nkubectl logs <pod> -n <ns> --previous\nkubectl get events -n <ns> --sort-by=.lastTimestamp\n```\n\n重点看：\n\n- `Last State / Reason / Exit Code`\n  - `137`：可能 OOMKilled，或被 liveness 杀\n  - `143`：SIGTERM\n  - `1`：应用自身报错退出\n- Events 里是否有 `Liveness probe failed` / `Readiness probe failed`\n- 是否 `OOMKilled`\n- 应用日志是否显示配置、依赖、端口、权限、数据库连接等问题\n\n如果确认是“应用启动时间超过 liveness 容忍时间，被误杀”，更推荐用 `startupProbe`，而不是把 `initialDelaySeconds` 调大：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30   # 最多容忍约 300s 启动\n  timeoutSeconds: 3\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 20\n  timeoutSeconds: 5\n  failureThreshold: 3\n\nreadinessProbe:\n  httpGet:\n    path: /ready\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 3\n  failureThreshold: 3\n```\n\n`startupProbe` 成功前，liveness/readiness 不会执行；启动成功后 liveness 才开始工作。它比固定 `initialDelaySeconds` 更精确。\n\n但如果是下面这些情况，`initialDelaySeconds=300` 基本没用：\n\n- 应用启动后马上崩溃，例如配置错误、缺少环境变量、连不上 DB\n- 镜像启动命令/参数错误\n- 权限、文件系统、挂载问题\n- OOMKilled\n- 端口写错，探针路径不对\n- 容器进程自身退出，而不是 liveness 杀\n\n所以结论：**不要默认调到 300 就能好。先看 `--previous` 日志和 Events；只有确认是慢启动被 liveness 误杀，才考虑调大延迟，但优先用 `startupProbe`。**"
+        "tshu_score": 42.57,
+        "response": "不一定。**只有一种情况调大 `initialDelaySeconds` 可能有效：应用启动确实很慢，还没启动完就被 livenessProbe 判失败并杀掉重启。** 如果是应用自身启动即崩溃、配置错误、依赖不可用、OOM、权限/命令错误等，调到 300 也没用，甚至会掩盖问题、延迟发现故障。\n\n先确认是不是 liveness 干的：\n\n```bash\nkubectl describe pod <pod> -n <ns>\nkubectl logs <pod> -n <ns> --previous\nkubectl get pod <pod> -n <ns> -o yaml\n```\n\n重点看 Events 和 lastState：\n\n- 有 `Liveness probe failed`、`Killing container`、`failed liveness probe, will be restarted`：才可能是 liveness 导致。\n- `OOMKilled`：调探针没用，查内存限制/泄漏。\n- `exitCode=137`：可能是 OOM 或 SIGKILL。\n- `exitCode=1/126/127`：通常是应用错误、命令/权限问题。\n- 容器启动后立刻退出：`initialDelaySeconds` 基本无关。\n\n如果是慢启动，**更推荐用 `startupProbe`**，而不是把 liveness 的 `initialDelaySeconds` 调很大：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30   # 最多等约 300s\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 3\n  failureThreshold: 3\n\nreadinessProbe:\n  httpGet:\n    path: /ready\n    port: 8080\n  periodSeconds: 5\n```\n\n这样启动期间由 `startupProbe` 判断，启动成功后才让 liveness 接管；比单纯调 `initialDelaySeconds: 300` 更语义化。\n\n结论：**调到 300 不一定能好，先看 Events 和上次退出原因。确认是“慢启动被 liveness 误杀”才考虑；最佳做法是用 `startupProbe`，并修复真正导致容器退出的根因。**"
       },
       {
-        "task_id": "inc_t03",
-        "tshu_score": 32.82,
-        "response": "不对，**别直接 `rm -rf /var/log/*`**。这不是“最快最稳”，风险很高。\n\n原因：\n\n- 删除正在写入的日志文件后，进程还持有文件句柄，**空间不会立刻释放**，直到进程重启/重载。`df` 可能还是满的。\n- `rm -rf /var/log/*` 会删掉子目录，比如 `nginx/`、`mysql/`、`audit/`、`journal/`，有些服务不会自动重建，权限/SELinux 上下文也会丢。\n- 审计、安全、排障日志可能直接丢失。\n- 如果 `/var/log` 不是满的那个分区，删了也没用。\n\n建议按这个顺序处理：\n\n```bash\ndf -h\ndf -i\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\nsudo find /var/log -xdev -type f -size +200M -printf '%s %p\\n' | sort -n\n```\n\n找大日志后，**清空文件而不是删除文件**：\n\n```bash\nsudo truncate -s 0 /var/log/xxx.log\n# 或\nsudo : > /var/log/xxx.log\n```\n\n如果是 journald：\n\n```bash\nsudo journalctl --disk-usage\nsudo journalctl --rotate\nsudo journalctl --vacuum-size=500M\n# 或 sudo journalctl --vacuum-time="
-      },
-      {
-        "task_id": "clr_t04",
-        "tshu_score": 32.65,
-        "response": "结论：**一般不会更快，别默认把 TLS 1.3 降回 1.2。** TLS 1.3 的设计目标之一就是减少握手往返：\n\n- TLS 1.2 完整握手通常 **2-RTT**；TLS 1.3 完整握手通常 **1-RTT**。\n- TLS 1.3 会话恢复通常 **1-RTT**，可选 **0-RTT**；TLS 1.2 恢复一般也要 1-RTT。\n- TLS 1.3 密码套件更简单、握手消息加密更多，通常不会比 1.2 慢。\n\n所以“握手慢”通常不是 TLS 版本造成的，而是 DNS、TCP、RTT、证书链、会话复用、服务端 CPU、丢包或中间设备等问题。\n\n但有些情况会让 TLS 1.3 **看起来**慢：\n\n1. **发生 HelloRetryRequest**：客户端和服务端 key share 曲线不匹配，会多一个 RTT。可优先配置 X25519。\n2. **会话复用没生效**：TLS 1.3 的 session ticket / PSK 没正确复用，冷连接自然慢。\n3. **证书链太大、没开 OCSP Stapling**：握手包变大，丢包时更明显。\n4. **测量包含了 DNS/TCP/TTFB**：你看到的“HTTPS 慢”未必是 TLS 握手。\n5. **中间盒/旧负载均衡器对 TLS 1.3 处理差**：少见，但需要 A/B 验证。\n6. **CPU 或加密库瓶颈**：检查是否启用 AES-NI、ChaCha20、现代 OpenSSL 等。\n\n建议先做 A/B 测量，而不是直接降级：\n\n```bash\nopenssl s_client -connect example.com:443 -servername example.com -tls1_3\nopenssl s_client -connect example.com:443 -servername example.com -tls1_2\n```\n\n```bash\ncurl -w 'dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n' \\\n  -o /dev/null -s https://example.com\n```\n\n分别测冷连接、复用连接，取 p50/p95，并用 Wireshark 看是否有 HRR、证书链大小、Session Ticket、重传等。\n\n推荐做法：**保留 TLS 1.3，TLS 1.2 作为兼容回退；优化证书链、OCSP Stapling、会话复用、X25519 key share、CDN/边缘节点和 TCP 参数。** 只有在明确测出某条链路/某个中间设备对 TLS 1.3 有异常且无法修复时，才临时禁用 TLS 1.3，而不是把它当作通用提速手段。"
-      },
-      {
-        "task_id": "code_t04",
-        "tshu_score": 32.12,
-        "response": "结论：**不一定是“索引失效”**。更常见的情况是：你只建了 `created_at` 单列索引，而这个查询的最优索引通常是：\n\n```sql\nALTER TABLE your_table\n  ADD INDEX idx_status_created_at (status, created_at);\n```\n\n### 为什么 `created_at` 单列索引可能不用？\n\n你的"
-      }
-    ]
-  },
-  {
-    "model": "auto/gemini-3.8-flash",
-    "n_samples": 24,
-    "tshu_score": 29.74,
-    "opening_entropy": 0.9428,
-    "metrics": {
-      "adr": 43.41,
-      "eid": 67.97,
-      "ogr": 35.72,
-      "ssf": 4.17,
-      "cci": 19.12,
-      "pni": 10.3,
-      "osc": 0.0,
-      "vtr": 41.1
-    },
-    "worst": [
-      {
-        "task_id": "rel_t03",
-        "tshu_score": 59.56,
-        "response": "**千万别这么写。** \n\n你说得对，**用户确实看不懂也不关心技术细节**，但这句话的问题不在于它“太技术”，而在于它**“太假大空”**。\n\n在用户眼里，这句黑话翻译过来通常只有两种意思：\n1. **“我们改了代码，但没给你带来任何实际好处。”**\n2. **“我们修了一堆 Bug，但不好意思承认之前写的有多烂。”**\n甚至可能会引起用户的恐慌：“升级架构？是不是又要卡了？是不是我的数据要丢？”\n\n写发布说明（Release Notes）的核心原则是：**不要讲你做了什么（过程/技术），要讲用户能得到什么（价值/体验）。**\n\n---\n\n### 试试这样改，既不提技术细节，又能让用户爽到：\n\n你可以根据这次架构升级**实际带来的改变**，对号入座：\n\n#### 选项 A：如果升级带来了速度提升（最常见）\n> **别写：** 全面升级系统架构\n> **改写：** **“我们给引擎换了个‘超跑内核’：App 启动速度提升 30%，页面切换比以前更丝滑了。”**\n> *(用户心智：变快了，爽。)*\n\n#### 选项 B：如果升级解决了卡顿、闪退、耗电（稳定性）\n> **别写：** 增强系统稳定性\n> **改写：** **“优化了底层性能：修复了几个可能导致闪退的陈年老 Bug，并且悄悄降低了耗电量。”**\n> *(用户心智：更稳定、省电，贴心。)*\n\n#### 选项 C：如果升级是为了支撑更大的数据量、高并发\n> **别写：** 赋能业务增长\n> **改写：** **“现在即使在万人同时在线的高峰期，你的操作依然能得到秒级响应。”** 或 **“支持上传/加载更多内容，不再担心卡成 PPT。”**\n> *(用户心智：高峰期不卡了，靠谱。)*\n\n#### 选项 D：实在没啥感知，纯粹是纯后台重构（防背锅）\n> **改写：** **“我们对底层进行了深度‘大扫除’和保养，虽然表面看起来没变，但整个系统更轻快、更安全了。”**\n> *(用户心智：团队在认真维护，不是在敷衍。)*\n\n---\n\n### 总结一个公式：\n> **动词（解决了什么痛点 / 带来了什么爽点） + 量化结果（变快/变稳/变简单）**\n\n用户不需要懂什么是“微服务”、“重构”或“中台”，他们只想知道：**“我用起来会更爽吗？爽在哪？”**"
-      },
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 50.58,
-        "response": "**千万别这么做！直接 `rm -rf /var/log/*` 非常危险，而且往往达不到释放空间的目的。**\n\n虽然它“看起来”最快，但会引发以下两个严重问题：\n\n1. **磁盘空间可能根本不会释放（假死）：**\n   Linux 中，如果一个文件被某个正在运行的进程（比如 `rsyslog`、`nginx` 等）打开着，你用 `rm` 删除了它，**文件只是被标记为 deleted，但磁盘空间不会释放**，直到占用该文件的进程被重启。你会发现磁盘依然是满的。\n2. **导致系统或服务崩溃：**\n   `/var/log/` 下不仅有日志文件，还有很多**子目录**（比如 `/var/log/journal/`、`/var/log/nginx/`）。直接暴力删除会导致这些目录消失，很多服务在重启时发现日志目录不存在，**会直接报错拒绝启动**。\n\n---\n\n### 正确且快速的清理姿势：\n\n#### 方案一：优先清理 systemd 日志（通常占几甚至几十个 G）\n现代 Linux 系统中，`journal` 日志往往是最大头，用系统自带命令清理最安全：\n\n```bash\n# 只保留最近 2 天的日志\njournalctl --vacuum-time=2d\n\n# 或者限制 journal 日志的最大占用空间为 500M\njournalctl --vacuum-size=500M\n```\n\n#### 方案二：安全地清空大文件，而不是删除（关键！）\n使用 `>` 清空文件内容，文件还在，但大小瞬间变为 0，**正在写入的进程不会报错，空间立刻释放**。\n\n1. 先找出 `/var/log` 下大于 100M 的文件：\n   ```bash\n   find /var/log -type f -size +100M\n   ```\n2. 使用截断（truncate）清空它们（**推荐**）：\n   ```bash\n   # 清空特定的大文件，例如：\n   > /var/log/syslog\n   > /var/log/messages\n   \n   # 或者批量清空 /var/log 下所有 7 天前修改过、大于 50M 的 .log 文件内容\n   find /var/log -type f -name \"*.log\" -size +50M -exec truncate -s 0 {} +\n   ```\n\n#### 方案三：只删旧的归档压缩包（.gz / .1）\n日志轮转（logrotate）生成的老旧压缩包是可以安全删除的，因为没有进程在占用它们：\n\n```bash\n# 安全删除已经轮转归档的历史日志压缩包\nrm -f /var/log/*.gz /var/log/*.[0-9]\nrm -f /var/log/*/*.gz /var/log/*/*.[0-9]\n```\n\n---\n\n### 补充排查：如果清空后空间依然没释放？\n\n运行以下命令查看是否有“已被删除但仍被进程占用”的文件：\n```bash\nlsof | grep deleted | grep \"/var/log\"\n```\n如果有，会看到对应的进程 PID 和服务名，**重启对应的服务**（例如 `systemctl restart rsyslog`）即可真正释放空间。"
+        "task_id": "rel_t04",
+        "tshu_score": 31.0,
+        "response": "不建议，也不能把“灰度发布”当成“不用回滚方案”的理由。**灰度发布和回滚方案是两层保障，不是替代关系。**\n\n灰度发布只能降低爆炸半径，不能保证不出问题；出问题时，最优先的动作应该是**快速止损**，而回滚通常比现场热修更快、更可控、风险更低。直接改代码热修作为唯一手段有几个明显问题：\n\n1. **热修本身会引入新风险**  \n   故障时时间紧、压力大，改代码容易漏改、引入新 bug，甚至把局部故障扩大成全量故障。\n\n2. **不是所有变更都能热修**  \n   数据库 schema、数据迁移、消息格式、缓存结构、配置中心、第三方接口协议、已下发客户端等，往往无法靠改代码立即恢复；没有回滚方案会非常被动。\n\n3. **热修链路长且不可控**  \n   定位、改代码、构建、测试、审批、发布、验证都需要时间；如果 CI/CD 或发布系统本身异常，热修可能根本发不出去。\n\n4. **审计和变更管理要求**  \n   生产故障期间的热修也需要审批、记录、验证和复盘。没有回滚预案，在合规和审计上通常也站不住。\n\n5. **灰度策略本身也可能出错**  \n   灰度规则、流量路由、开关配置、用户分群都可能配错；这时需要能回滚配置/流量，而不只是改代码。\n\n更合理的做法是：\n\n- **灰度发布必须配套回滚方案**：代码回滚、配置回滚、流量回切、开关关闭、数据恢复/补偿预案。\n- **优先用开关/Feature Flag 止损**：能关功能先关，不一定改代码。\n- **定义自动/手动回滚指标**：错误率、延迟、成功率、业务指标异常即触发回滚。\n- **热修只作为回滚不可行时的补充手段**，并且要走快速审批、最小变更、验证和记录。\n- **定期演练回滚**：没演练过的回滚方案约等于没有。\n- **不可逆变更单独设计**：数据库变更尽量向前兼容，采用 expand-contract；消息和缓存考虑双写/兼容期。\n\n结论：**灰度发布不能省回滚方案；出问题也不是“直接改代码热修就行”。正确原则是：先止损，回滚/关开关优先，热修作为受控补充。**"
       },
       {
         "task_id": "clr_t03",
-        "tshu_score": 48.97,
-        "response": "**简短的回答：不仅不会没，反而可能会来得更猛烈、停顿时间（STW）更长。**\n\n把堆从 4G 调到 16G，最直接的效果通常是：**降低 Full GC 的触发频率，但极大地增加单次 Full GC 的停顿时间。** \n\n以下是为什么 Full GC 不会消失，以及可能引发的新问题：\n\n---\n\n### 一、为什么 Full GC 依然会发生？\n\nFull GC 的本质是**老年代被填满**或者**元空间不足**等原因触发的全局回收。扩大堆内存只是“把水池做大了”，并没有“关掉水龙头”：\n\n1. **存在内存泄漏（Memory Leak）：**\n   * 如果代码里有静态集合不断塞入对象、ThreadLocal 未清理、未关闭的连接等，对象只增不减。\n   * **结果：** 4G 的时候可能 2 小时爆一次，16G 只不过是撑到 8 小时爆一次而已。\n2. **巨型对象与分配速率（Allocation Rate）：**\n   * 如果有大查询（比如一次性 `select *` 查出几百万条数据到内存），瞬间打满老年代，多大的堆都会直接触发 Full GC，甚至 OOM。\n3. **老年代分配担保失败：**\n   * 堆变大了，Young GC 产生的存活对象可能也变多了，如果 Survivor 区放不下，对象提前晋升（Premature Promotion）到老年代，老年代迟早还是会被填满。\n4. **元空间（Metaspace）打满：**\n   * Full GC 不仅回收堆，如果动态生成类过多（如 CGLIB、反射、大量动态 JSP），导致元空间满了，同样会触发 Full GC。这跟你的堆多大**毫无关系**。\n5. **显式调用 `System.gc()`：**\n   * 代码或第三方库（如 RMI）中直接调用，依然会触发 Full GC（除非配置了 `-XX:+DisableExplicitGC`）。\n\n---\n\n### 二、盲目调大堆，可能会带来更严重的后果\n\n1. **单次 Stop-The-World (STW) 时间成倍增加：**\n   * 如果你使用的是传统的垃圾回收器（如 **CMS** 或 **Parallel GC**），它们在回收时需要遍历的对象更多。\n   * 在 4G 堆下，一次 Full GC 可能卡顿 1~2 秒；\n   * 在 16G 堆下，一次 Full GC 可能会导致系统**无响应十几秒甚至几十秒**，直接引发上游超时、熔断，甚至集群节点被判定“死亡”而被踢出。\n2. **CPU 飙升：**\n   * 回收 16G 的垃圾需要消耗更多的 CPU 算力来进行标记、清理或整理。\n\n---\n\n### 三、如果确实需要 16G 堆，你应该怎么做？\n\n将内存从 4G 提升到 16G 是很常见的操作，但不能只改 `-Xmx` 和 `-Xms`，必须配合以下调整：\n\n#### 1. 换用适合大堆的垃圾回收器\n* **强烈建议升级到 G1 GC（甚至 ZGC）：**\n  * 如果是 JDK 8，默认是 Parallel GC，**千万不要直接给 Parallel 配 16G 堆**。请至少开启 G1：\n    `-XX:+UseG1GC -XX:MaxGCPauseMillis=200`\n  * G1 是把内存划分为很多个 Region，它能控制每次停顿的时间，优先回收垃圾最多的区域，更适合 8G 以上的堆。\n  * 如果是 JDK 11/17+，可以考虑 **ZGC**，其 STW 时间通常在 10ms 以内（但会消耗稍多一点 CPU）。\n\n#### 2. 必须排查 Full GC 的根本原因\n不要试图用物理内存去掩盖代码缺陷：\n* **抓 Dump 分析：** 加上启动参数 `-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/dump/`，或者在 Full GC 频繁时用 `jmap` 导出一份 Dump，用 MAT (Eclipse Memory Analyzer) 查看是谁占满了内存。\n* **检查 GC 日志：** 查看 Full GC 发生前，老年代的增长曲线是“锯齿形”（正常，能回收掉）还是“阶梯形上升”（内存泄漏）。\n\n### 总结\n**堆内存大小影响的是 Full GC 的“周期”，而不是 Full GC 的“有无”。** \n治本的方法永远是：**查明对象为何晋升到老年代/为何无法回收 + 选用适配大内存的低延迟垃圾收集器（如 G1/ZGC）。**"
-      },
-      {
-        "task_id": "clr_t04",
-        "tshu_score": 44.97,
-        "response": "**不会更快，反而大概率会更慢。** \n\n**TLS 1.3 在设计上最大的改进之一就是极大地提升了握手速度。** 将 TLS 1.3 降级回 1.2 是“反向优化”。\n\n以下是两者的核心对比：\n\n### 1. 握手往返时延（RTT）对比\n\n*   **TLS 1.2 首次连接：需要 2-RTT**\n    *   客户端与服务端需要来回跑 2 次（TCP 握手不算，单纯 TLS 握手就需要 2 个往返）才能开始发送实际的 HTTP 数据。\n*   **TLS 1.3 首次连接：只需要 1-RTT**\n    *   TLS 1.3 删除了大量过时的加密算法，简化了握手流程。客户端在发送握手请求的同时，就直接推测并发送了加密密钥参数。**握手时间直接减半。**\n*   **恢复连接（Session Resumption）：**\n    *   TLS 1.2 需要 1-RTT。\n    *   TLS 1.3 支持 **0-RTT**（Early Data），客户端甚至可以在发送握手的同时直接发送加密的应用数据，实现“零延迟”起飞。\n\n---\n\n### 既然 TLS 1.3 理论上更快，为什么你感觉“慢”？\n\n如果你发现当前开启 TLS 1.3 依然很慢，问题通常**不是出在协议版本上**，而是出在以下几个瓶颈：\n\n1.  **物理延迟（RTT）过高：**\n    *   如果服务器在海外，网络延迟本身就有 200ms，即使是 TLS 1.3 的 1-RTT 也需要 200ms。加上 TCP 握手，体感依然很慢。\n    *   *对策：* 接入 CDN，让用户就近完成 TLS 握手。\n\n2.  **证书链过大 或 OCSP 查询阻塞：**\n    *   **OCSP 验证：** 客户端校验证书时，可能去请求证书颁发机构（CA），如果 CA 服务器在国外且被墙，会发生严重阻塞。\n    *   *对策：* 在 Nginx/Caddy 等服务器上开启 **OCSP Stapling（OCSP 装订）**，让服务器提前缓存好验证结果直接发给客户端。\n\n3.  **使用了性能较差的证书加密算法：**\n    *   传统的 RSA 2048/4096 证书计算量很大，会消耗更多的服务器 CPU 和时间。\n    *   *对策：* 换用 **ECC (ECDSA P-256)** 证书。ECC 证书体积小得多（传输快），且签名解密速度远快于 RSA。\n\n4.  **服务器 CPU 算力瓶颈：**\n    *   高并发下，加密解密消耗了大量 CPU。\n    *   *对策：* 开启 TLS 会话复用（Session Ticket/Cache），避免每次都走完整的全握手。\n\n5.  **中间网络设备干扰：**\n    *   某些极老旧的路由器、防火墙或运营商设备对 TLS 1.3 的流量支持不佳，导致丢包重传。这种情况非常少见，但确实存在。\n\n### 总结建议\n\n**绝对不要降回 TLS 1.2**，降级不仅会丢失速度优势，还会降低安全性（TLS 1.2 支持很多已被证明不安全的弱加密套件）。\n\n**正确优化握手速度的姿势：**\n1. 保留 **TLS 1.3** 并开启 `TLS 0-RTT`。\n2. 开启 **OCSP Stapling**。\n3. 将证书换成 **ECC (ECDSA)** 算法。\n4. 使用 **HTTP/2** 或直接上 **HTTP/3 (QUIC)** —— HTTP/3 基于 UDP，将传输层和加密层握手合并，首次连接仅需 1-RTT，甚至更快。\n5. 套上 **CDN** 减少物理距离带来的 RTT。"
-      },
-      {
-        "task_id": "code_t02",
-        "tshu_score": 43.02,
-        "response": "**原因：** 后端服务（127.0.0.1:8080）未启动或已崩溃，导致 Nginx 无法建立连接。\n\n**下一步：** 在服务器上运行 `netstat -tlnp | grep 8080` 检查端口是否被占用，并查看对应后端程序的运行状态（如 `systemctl status [服务名]`）并尝试重启它。"
-      }
-    ]
-  },
-  {
-    "model": "auto/gemini-4-argon",
-    "n_samples": 24,
-    "tshu_score": 29.37,
-    "opening_entropy": 0.9518,
-    "metrics": {
-      "adr": 49.94,
-      "eid": 64.38,
-      "ogr": 36.53,
-      "ssf": 0.0,
-      "cci": 25.3,
-      "pni": 5.03,
-      "osc": 0.0,
-      "vtr": 37.09
-    },
-    "worst": [
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 50.19,
-        "response": "**千万不要！马上停下你的手！** \n\n虽然 `rm -rf /var/log/*` 看起来很快，但这在 Linux 运维中是一个**非常危险且往往无效**的操作。\n\n原因主要有以下三点，尤其是第一点：\n\n### 1. 磁盘空间根本不会释放（最坑的一点）\nLinux 系统中，很多服务（如 Nginx、MySQL、rsyslog 等）正在后台运行并打开着这些日志文件。如果你直接用 `rm` 删除，只是删除了文件的“目录指针”，但因为进程还在占用这个文件，**磁盘空间实际上根本不会释放**。你用 `df -h` 看，磁盘依然是 100% 满的，除非你把所有相关的服务都重启一遍。\n\n### 2. 服务会报错或停止记录日志\n当你把 `/var/log/` 下的所有内容（包括子目录，比如 `/var/log/nginx/`、`/var/log/mysql/`）删掉后，很多服务因为找不到原来的日志目录或文件，哪怕重启服务也会直接失败（报错：`No such file or directory`），或者后续再也无法记录日志。\n\n### 3. 破坏系统审计和安全记录\n`/var/log/` 下有一些系统自带的二进制文件（如 `wtmp`, `btmp`, `lastlog`），用于记录谁登录过系统、谁在暴力破解你的密码。直接删掉会导致 `last`、`lastb` 等系统命令报错。\n\n---\n\n### 正确的“最快急救”姿势\n\n如果你想最快、最安全地释放空间，请按以下步骤操作：\n\n#### 第一步：找出到底是谁占满了空间\n不要盲目全删，先用命令看看到底是哪个文件最大：\n```bash\n# 查看 /var/log 下最大的前 10 个文件或目录\ndu -sh /var/log/* | sort -rh | head -n 10\n```\n\n#### 第二步：精准打击（清空而不是删除）\n**情况 A：如果是某几个特定的超大日志文件（比如 `syslog`, `messages`, `nginx/access.log`）**\n使用**重定向清空**的方式。这种方法**瞬间释放空间**，保留文件权限，且**不需要重启服务**：\n```bash\n# 使用 > 符号直接把文件大小变成 0（注意前面有个空格或冒号）\n> /var/log/syslog\n# 或者使用 truncate 命令\ntruncate -s 0 /var/log/nginx/access.log\n```\n\n**情况 B：如果是 `/var/log/journal` 目录超大**\n这是 `systemd` 的日志目录，不能直接删，但可以用自带命令安全清理，瞬間释放几个 G：\n```bash\n# 只保留最近 500M 的日志（大小可改）\njournalctl --vacuum-size=500M\n# 或者只保留最近 2 天的日志\njournalctl --vacuum-time=2d\n```\n\n**情况 C：如果是大量的历史归档日志**\n那些以 `.gz`、`.1`、`.2`、`.old` 或带日期结尾的文件，是已经打包归档的旧日志，没有进程在占用，**这些是可以用 `rm` 直接删的**：\n```bash\n# 安全删除所有已压缩的归档日志\nfind /var/log -type f -name \"*.gz\" -delete\n# 安全删除所有 .1 结尾的旧日志\nfind /var/log -type f -name \"*.1\" -delete\n```\n\n### 如果你已经执行了 `rm -rf` 怎么办？\n如果你在看这个回答前已经删了，且发现 `df -h` 空间没释放：\n1. 运行 `lsof | grep deleted` 查看是哪些进程还咬着被删的文件不放。\n2. 重启对应的服务（如 `systemctl restart rsyslog nginx`），空间就会释放了。\n3. 观察服务是否因为缺少日志目录而报错，缺什么目录就手动 `mkdir` 补上。"
-      },
-      {
-        "task_id": "inc_t04",
-        "tshu_score": 49.75,
-        "response": "**不一定，甚至很大概率不能彻底解决问题，反而可能掩盖真正的故障。**\n\n把 `initialDelaySeconds` 调到 300 秒（5分钟），只有在**一种极其特定的情况**下有效：**你的应用程序确实极其庞大、启动非常慢（比如某些陈旧的巨型 Java 应用），它本身没有任何报错，只是因为还没启动完，就被 K8s 的存活探针（livenessProbe）无情地杀死了。**\n\n除此之外，调大这个参数只是让 Pod 在死掉之前多“苟延残喘”一会儿，或者在进程已经崩溃后，让 K8s 傻等 5 分钟才去重启它。\n\n要真正解决 `CrashLoopBackOff`，你需要先搞清楚**到底是谁杀死了你的容器**。请按以下步骤排查：\n\n### 第一步：找出死因（最关键）\n\n运行以下命令查看 Pod 的详情：\n```bash\nkubectl describe pod <你的Pod名称>\n```\n重点看最下面的 **Events（事件）** 和中间的 **Last State（最后状态）**：\n\n**情况 A：真的是探针杀死的**\n*   **迹象**：Events 里有 `Liveness probe failed: ...`，并且紧接着 `Killing container...`。同时，Last State 里的 Exit Code 通常是 `137`（被系统强制终止）或 `143`。\n*   **说明**：这说明应用在运行，但健康检查没过。\n\n**情况 B：应用自己崩溃的（跟探针完全无关）**\n*   **迹象**：Events 里没有 Liveness 报错，直接就是 `Back-off restarting failed container`。Last State 里的 Exit Code 是 `1`, `2`, `127` 等非零值。\n*   **说明**：你的代码报错了、配置文件写错了、连不上数据库、或者启动命令不对。容器启动后几秒内自己退出了。**这种情况下，你把 `initialDelaySeconds` 调到 10000 也没用，因为程序在探针开始工作前就已经自己死掉了。**\n\n**情况 C：内存溢出 (OOMKilled)**\n*   **迹象**：Last State 显示 `Reason: OOMKilled`，Exit Code 是 `137`。\n*   **说明**：你给 Pod 分配的内存（limits.memory）不够，程序启动过程中把内存吃光，被 Linux 内核杀死了。**调探针没用，得加内存。**\n\n### 第二步：查看崩溃前的遗言\n\n如果是程序自己崩溃（情况 B），运行以下命令看它死前报了什么错：\n```bash\nkubectl logs <你的Pod名称> --previous\n```\n*(注意 `--previous` 参数非常关键，它是看**上一次**崩溃的那个容器的日志，不加的话看到的是当前正在重启的容器日志)*\n\n---\n\n### 第三步：如果确认是“启动太慢”导致的，怎么改最优雅？\n\n如果你排查完，确认真的是因为应用启动需要 3-4 分钟，被探针误杀了。**直接把 `livenessProbe` 的 `initialDelaySeconds` 调到 300 依然不是最佳实践。**\n\n*   **为什么不好？** 如果应用在启动第 10 秒时因为配置错误卡死了，K8s 依然会傻等 300 秒才去重启它，极其影响发布和排障效率。\n\n**正确的做法是使用 `startupProbe`（启动探针，K8s 1.18+ 支持）：**\n\n用 `startupProbe` 来兜底缓慢的启动过程，一旦启动成功，就交由快速的 `livenessProbe` 接管。\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  failureThreshold: 30  # 最多尝试30次\n  periodSeconds: 10     # 每10秒尝试一次（总共给 30 * 10 = 300秒 的启动时间）\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  initialDelaySeconds: 0 # 启动探针成功后立即开始，不需要延迟了\n  periodSeconds: 10\n  failureThreshold: 3    # 运行期间如果连续 30秒 没响应，就快速重启它\n```\n**这样配置的好处是**：既给足了最大 300 秒的启动宽限期；如果应用在 30 秒内就启动好了，它能在第 30 秒立刻进入正常状态，不用傻等满 300 秒。"
-      },
-      {
-        "task_id": "clr_t03",
-        "tshu_score": 46.37,
-        "response": "**并不是。把堆从 4G 调到 16G，大概率只能“推迟” Full GC 的发生，甚至可能带来更严重的“副作用”。**\n\n在分布式系统和后端开发中，这是一个非常经典的误区。调大堆内存后，你可能会面临以下几种真实情况：\n\n### 1. 如果存在内存泄漏，你会死得更惨\n如果你的代码里有内存泄漏（比如静态集合不断塞数据、连接未关闭、ThreadLocal 未清理），或者业务并发量极高且制造了大量长生命周期对象：\n* **4G 堆的时候：** 可能每小时触发一次 Full GC，每次系统卡顿（Stop-The-World，简称 STW）**1 秒**。\n* **16G 堆的时候：** 可能每 4 小时才触发一次 Full GC，但由于垃圾攒得太多、内存空间太大，扫描和整理的时间呈指数级上升，这次卡顿可能长达 **10 秒甚至几十秒**！\n\n**后果：** 10 秒的卡顿会导致微服务心跳超时、Dubbo/Spring Cloud 熔断、数据库连接池假死、K8s 探针认为服务挂了直接重启 Pod。这就是所谓的**“不鸣则已，一鸣惊人”**。\n\n### 2. 很多 Full GC 根本不是因为“堆满了”\n即使你的 16G 堆只用了 2G，依然可能频繁触发 Full GC。常见原因包括：\n* **元空间（Metaspace）满了：** 动态加载了太多类（如大量使用反射、CGLib 动态代理、Groovy 脚本），Metaspace 扩容或达到上限会直接触发 Full GC，这和堆多大没关系。\n* **显式调用 `System.gc()`：** 代码里、或者引入的第三方库（比如 NIO 框架 Netty 等使用 Direct ByteBuffer 堆外内存时）、或者 RMI 定时调用，都会主动触发 Full GC。\n* **大对象分配失败（G1 的 Humongous 分配）：** 堆虽然还有空间，但是碎片化严重，塞不下一个连续的大数组（比如一次性从数据库查出 10 万条数据），直接触发 Full GC。\n\n### 3. 什么情况下调大到 16G 真的有用？\n只有一种情况：你的系统**没有内存泄漏**，但是之前 4G 的时候，正常业务的活跃对象（Live Data）就已经占了 3.5G。每次 GC 后只能回收一点点内存，导致 JVM 不停地做无用功。\n这时候加到 16G，给了新生代（Young Gen）足够的空间，让大多数朝生夕死的对象在 Minor GC 阶段就被干掉了，不会晋升到老年代（Old Gen），**这种情况下，Full GC 确实会大幅减少甚至消失。**\n\n---\n\n### 给你的建议：\n\n既然你已经把内存加到了 16G，千万不要只改 `-Xmx16g` 就完事了，建议做以下操作：\n\n1. **更换垃圾收集器（最重要）：**\n   * 4G 堆可以用默认的 Parallel GC 或 CMS。\n   * **16G 堆强烈建议使用 G1 GC**（`-XX:+UseG1GC`）。G1 的设计初衷就是为了大内存，它会把 16G 切成很多小块（Region），每次只回收垃圾最多的那几块（Mixed GC），极力避免整堆的 Full GC，能把卡顿时间控制在 200ms 以内。\n   * 如果是 JDK 17+，甚至可以考虑 **ZGC**，16G 堆的停顿时间能控制在几毫秒以内。\n2. **屏蔽显式 GC：**\n   * 加上参数 `-XX:+DisableExplicitGC`，防止第三方代码调用 `System.gc()`（如果重度使用 Netty 等堆外内存需谨慎）。\n3. **固定堆大小：**\n   * 把初始堆和最大堆设为一样：`-Xms16g -Xmx16g`，避免 JVM 在运行期间动态扩容带来的性能抖动和 GC。\n4. **先看病，再吃药：**\n   * 在改配置前，最好用 `jstat -gcutil <pid> 1000` 看看老年代（O区）是不是一直 99% 降不下来，或者开启 GC 日志，丢到 *GCeasy* 这种网站上分析一下，看看之前触发 Full GC 的真正原因（Ergonomics、Metadata GC Threshold 还是 Allocation Failure）。"
-      },
-      {
-        "task_id": "rel_t02",
-        "tshu_score": 45.39,
-        "response": "请按技术栈任选其一发给同事（默认假设你用的是最常见的 Node/Python/Go）：\n\n**【Node.js / 前端】**\n1. 安装并启动：`npm install && npm run dev`\n2. 本地访问：`http://localhost:3000` （端口：3000 或 8080）\n\n**【Python (FastAPI/Django)】**\n1. 安装依赖：`pip install -r requirements.txt`\n2. 启动服务：`uvicorn main:app --reload --port 8000` （端口：8000）\n\n**【Go / Docker】**\n1. 启动服务：`go run main.go` （或 `docker-compose up -d`）\n2. 本地访问：`http://localhost:8080` （端口：8080）\n\n*(注：因为不确定你的具体项目，发之前记得核对下实际端口号)*"
+        "tshu_score": 22.66,
+        "response": "不一定，**大概率不会“没了”**。把堆从 4G 调到 16G，通常只会让 Full GC **发生得更少、来得更晚**，但不能保证消除；如果存在内存泄漏或老年代持续增长，只是把 Full GC / OOM 推迟了。\n\n几个关键点：\n\n1. **Full GC 不由堆大小单独决定**\n   常见触发原因包括：\n   - 老年代/整堆空间不足\n   - 晋升失败、并发模式失败\n   - Metaspace 不足\n   - 显式 `System.gc()`\n   - G1 的 humongous allocation（大对象）等\n   - JVM 内部诊断、dump 等\n\n2. **堆变大后，Full GC 单次可能更慢**\n   16G 堆一旦发生 Full GC，标记、压缩、对象移动的扫描范围更大，停顿可能从几百 ms 变成数秒甚至更久。也就是说：**频率低了，但单次代价可能高了**。\n\n3. **如果有内存泄漏，扩容只是延迟爆炸**\n   4G 下频繁 Full GC，16G 下可能变成“很久才 Full GC 一次，但一次很重”，最终仍然 OOM。\n\n4. **要看收集器和触发日志**\n   比如 G1 下要看是不是：\n   - `to-space exhausted`\n   - `humongous allocation`\n   - `concurrent mode failure`\n   - `Metaspace` 触发\n   \n   CMS 下要看 promotion failure / concurrent mode failure。ZGC/Shenandoah 也有 Full GC，只是很少。\n\n建议先看 GC 日志，而不是直接扩堆：\n\n```bash\n-Xlog:gc*,gc+heap=debug,gc+ergo=debug:file=gc.log:time,uptime,level,tags\n```\n\n然后重点看：\n- Full GC 触发原因\n- Full GC 前后老年代占用\n- 每次 Full GC 后老年代是否能降下来\n- 停顿时间是否可接受\n- 是否有 Metaspace、大对象、显式 GC\n\n实践上：\n- **先确认 live set 有多大**，`-Xmx` 至少应覆盖活跃对象，而不是靠它掩盖泄漏。\n- 设置合理收集器，例如 G1/ZGC，并配置目标停顿时间。\n- 如果 Full GC 后老年代仍很高，优先查内存泄漏/缓存/大对象。\n- 如果是 Metaspace 问题，调 `-XX:MaxMetaspaceSize`，不是调堆。\n- 如果是显式 `System.gc()`，再评估是否 `-XX:+DisableExplicitGC`，别乱加。\n\n一句话：**扩堆不是关闭 Full GC 的开关。它可能减少 Full GC 次数，但可能增加单次停顿；要根治得看触发原因和活跃对象规模。**"
       },
       {
         "task_id": "rel_t03",
-        "tshu_score": 42.79,
-        "response": "你的顾虑非常正确：**用户确实看不懂、也不关心底层的技术细节。** \n\n但是，如果只写“全面升级系统架构，赋能业务增长”，用户同样看不懂——**因为这句话太像“大厂黑话”了，用户感知不到这对他自己有什么实际好处。** 看到这种话，用户的第一反应通常是：“哦，又是一次毫无感知的常规更新”，甚至直接关掉弹窗。\n\n既然做了底层架构升级，肯定是为了解决某些问题。**好发布说明的核心是：把“技术语言”翻译成“用户利益”。**\n\n你可以根据这次架构升级实际带来的效果，选择以下几种“人话”模板来替换：\n\n### 1. 如果升级后，系统变快了、更流畅了\n*   **不要写：** 重构底层架构，优化数据库查询。\n*   **建议写：** **“告别卡顿，快如闪电！我们给系统换了新引擎，现在打开页面和导出数据的速度提升了 X 倍。”**\n\n### 2. 如果升级后，系统更稳定、不容易崩溃了\n*   **不要写：** 升级微服务架构，提升高并发处理能力。\n*   **建议写：** **“稳如泰山！我们在后台做了一次大改造，就算在业务最高峰期，系统也能丝滑运行，不再掉链子。”**\n\n### 3. 如果升级是为了以后能更快推出新功能（纯基建，目前无感知）\n*   **不要写：** 全面升级系统架构，赋能业务增长。\n*   **建议写：** **“为了给你带来更多好用的功能，我们刚刚完成了系统的‘地基’加固。虽然现在看起来变化不大，但一大波超赞的新功能已经在路上了，敬请期待！”**\n\n### 4. 如果升级提高了安全性\n*   **不要写：** 升级安全架构，修复底层漏洞。\n*   **建议写：** **“你的数据安全又升级了！我们采用了全新的加密和防护技术，全方位守护你的业务资产。”**\n\n---\n\n### 终极偷懒但好用的万能公式：\n如果你实在不想写太多，可以用这个结合了“动作+好处”的精简版：\n\n> **【版本更新】系统底层全面换新！**\n> 这次我们没有增加复杂的按钮，而是把精力花在了“看不见的地方”。升级后，你将体验到**更快的加载速度、更稳定的系统运行**，为你的日常工作全力提速！\n\n**总结：** 哪怕只有一句话，也要把主语从“我们做了什么（升级架构）”变成“你能得到什么（更快、更稳、更安全）”。"
-      }
-    ]
-  },
-  {
-    "model": "auto/gpt-6-luna",
-    "n_samples": 24,
-    "tshu_score": 20.4,
-    "opening_entropy": 0.988,
-    "metrics": {
-      "adr": 67.02,
-      "eid": 34.22,
-      "ogr": 16.69,
-      "ssf": 0.0,
-      "cci": 0.0,
-      "pni": 4.43,
-      "osc": 0.0,
-      "vtr": 22.63
-    },
-    "worst": [
-      {
-        "task_id": "code_t04",
-        "tshu_score": 44.74,
-        "response": "不一定是“索引失效”。`created_at` 单列索引只按时间排序，`WHERE status='pending'` 仍可能要检查大量行；如果优化器估计全表扫描加排序更便宜，就会选择全表扫。特别是 `pending` 占比高、表较小，或查询还会取很多列时，这种选择可能是合理的。\n\n先看完整查询和 `EXPLAIN` 的 `key`、`rows`、`Extra`。如果查询是：\n\n```sql\nSELECT ...\nFROM your_table\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n可以试试联合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON your_table (status, created_at);\n```\n\n它先按 `status` 定位，再在该状态范围内按 `created_at` 排序。索引列顺序很重要；`(created_at, status)` 通常无法同样有效地同时满足这个筛选和排序。\n\n还可以检查：\n\n- 是否有 `LIMIT`；没有 `LIMIT` 时，若要返回大部分行，扫表可能更便宜。\n- `status` 和 `created_at` 的数据分布，以及表大小。\n- 查询是否对 `created_at` 使用了函数、类型转换，或对排序方向有特殊要求。\n- 统计信息是否过期；可考虑执行 `ANALYZE TABLE your_table` 后重新查看计划。\n\n贴出完整 SQL、表结构（含索引）和 `EXPLAIN` 结果，就能判断具体原因。"
-      },
-      {
-        "task_id": "clr_t03",
-        "tshu_score": 44.7,
-        "response": "不一定。堆调到 16G 可能会减少 Full GC 的频率，但不能保证它消失；有些 Full GC 是因为老年代空间不足或对象长期存活，堆变大只能延后触发。其他原因还包括显式调用 `System.gc()`、元空间不足、晋升失败，以及特定 GC 收集器的行为。\n\n先看 GC 日志里每次 Full GC 的触发原因和回收前后的堆占用：\n\n- **回收后占用很低**：可能是分配峰值或显式 GC，增大堆或调整相关配置可能有帮助。\n- **回收后仍接近堆上限**：更像是存活对象多或内存泄漏；加堆只能争取时间。\n- **堆占用不高但仍触发 Full GC**：检查元空间、显式 GC 和收集器配置。\n\n也要留意机器是否有足够内存容纳更大的堆，以及堆变大后可能带来的更长回收停顿。"
-      },
-      {
-        "task_id": "clr_t04",
-        "tshu_score": 43.87,
-        "response": "不一定，通常不能只靠降到 TLS 1.2 来提速。\n\nTLS 1.3 完整握手通常只需 **1 次往返**，TLS 1.2 通常需要 **2 次往返**。如果延迟主要来自网络往返，TLS 1.3 往往更快。会让 TLS 1.3 变慢的情况包括：客户端或服务器配置有问题、证书链过长、OCSP 查询慢，或连接无法复用；这时降级可能改变表现，但不一定解决根因。\n\n先确认慢在哪一段：用 `curl -w` 查看 DNS、TCP 连接和 TLS 握手耗时，并对比 TLS 1.2 与 1.3。例如：\n\n```bash\ncurl -sS -o /dev/null \\\n  -w 'connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\\n' \\\n  https://example.com\n\ncurl -sS -o /dev/null --tlsv1.2 --tls-max 1.2 \\\n  -w 'connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\\n' \\\n  https://example.com\n```\n\n多测几次并比较相同网络下的结果。`time_appconnect` 是从开始连接到 TLS 完成的累计时间，里面也包含 TCP 建连时间。一般建议保留 TLS 1.3，先排查证书链、OCSP、网络延迟和连接复用。"
-      },
-      {
-        "task_id": "inc_t04",
-        "tshu_score": 39.75,
-        "response": "不一定。把 `initialDelaySeconds` 调到 300，只是让 Kubernetes **晚 300 秒才开始做存活探针检查**。如果容器启动慢，可能暂时避免过早重启；如果应用启动失败、配置错误，或依赖不可用，等 300 秒后仍会失败，Pod 还是会重启。它也可能掩盖启动问题，让故障更晚暴露。\n\n先看 Pod 的重启原因和事件：\n\n```bash\nkubectl describe pod <pod>\nkubectl logs <pod> --previous\n```\n\n如果问题是应用正常启动需要较长时间，优先考虑配置 `startupProbe`：它会在启动期间暂缓 liveness 检查；应用启动成功后，再由 livenessProbe 检测运行状态。若应用只是短暂未就绪，用 `readinessProbe` 控制它何时接收流量。`initialDelaySeconds` 可以调，但应根据实际启动时间设置，并确认探针的 `timeoutSeconds`、`periodSeconds` 和 `failureThreshold` 合理。"
-      },
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 37.53,
-        "response": "不建议。`rm -rf /var/log/*` 会删除日志文件和目录，可能影响正在运行的服务；有些服务还会继续写入已删除的文件，导致空间没释放，直到服务重启。\n\n先找出是谁占空间：\n\n```bash\ndf -h\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\nsudo journalctl --disk-usage\n```\n\n如果主要是 systemd journal，可以安全地按大小清理旧记录：\n\n```bash\nsudo journalctl --vacuum-size=500M\n```\n\n如果某个日志文件特别大，先确认它对应的服务，再用截断方式释放空间（保留文件和权限）：\n\n```bash\nsudo truncate -s 0 /var/log/具体文件.log\n```\n\n把 `df -h` 和日志占用结果贴出来，我可以帮你判断最稳妥的清理命令。"
-      }
-    ]
-  },
-  {
-    "model": "auto/qwen3.8-flash",
-    "n_samples": 24,
-    "tshu_score": 19.92,
-    "opening_entropy": 0.9881,
-    "metrics": {
-      "adr": 51.0,
-      "eid": 36.78,
-      "ogr": 22.43,
-      "ssf": 0.0,
-      "cci": 13.88,
-      "pni": 0.22,
-      "osc": 0.45,
-      "vtr": 19.34
-    },
-    "worst": [
-      {
-        "task_id": "clr_t03",
-        "tshu_score": 50.15,
-        "response": "不一定。**把 JVM 堆从 4G 调到 16G，只能降低一部分“堆内存不足导致的 Full GC”概率，但不能保证 Full GC 就没了。**\n\nFull GC 是否出现，取决于它到底是谁触发的。\n\n---\n\n## 1. 如果原来是堆太小，确实可能减少 Full GC\n\n比如原来 4G 堆，业务对象很多，老年代频繁填满，触发 Full GC。  \n调到 16G 后，老年代空间变大，Full GC 频率可能明显下降。\n\n这种情况下：\n\n- Full GC 次数减少\n- Full GC 间隔变长\n- 应用吞吐提升\n- 但 GC 暂停时间可能变长，尤其是大堆 Full GC 更慢\n\n所以不是“没有”，而是“可能少”。\n\n---\n\n## 2. 如果是内存泄漏，16G 也扛不住\n\n如果存在内存泄漏，比如：\n\n- 静态集合一直加对象\n- ThreadLocal 没清理\n- 缓存无上限\n- 监听器/回调未注销\n- 大对象长期持有\n- 连接池、线程池对象泄漏\n\n那么堆从 4G 调到 16G，只是把问题发生时间往后推。\n\n表现可能是：\n\n> 4G 时 10 分钟 Full GC 一次，  \n> 16G 时 40 分钟 Full GC 一次，  \n> 但最终还是会 Full GC，甚至 OOM。\n\n这种情况必须 dump 分析，不能靠调大堆解决。\n\n---\n\n## 3. Full GC 不一定只是堆内存问题\n\nFull GC 可能由多种原因触发：\n\n### 1）老年代空间不足\n\n最常见。\n\n### 2）Young GC 后对象晋升失败\n\n比如大量对象从新生代进入老年代，老年代剩余空间不够。\n\n### 3）Metaspace 满\n\n类元数据区不足也会触发 Full GC。\n\n例如：\n\n- 动态代理生成大量类\n- Groovy/脚本引擎\n- CGLIB 动态类\n- 热部署\n- 反射生成类过多\n\n这时候调大堆没用，应该看：\n\n```bash\n-XX:MetaspaceSize\n-XX:MaxMetaspaceSize\n```\n\n### 4）直接内存不足\n\nNIO、Netty、Kafka、gRPC、堆外缓存等可能使用 Direct Memory。\n\n如果直接内存不足，可能触发 Full GC，甚至 `OutOfMemoryError: Direct buffer memory`。\n\n这时候也不是堆大小问题。\n\n### 5）代码显式调用 `System.gc()`\n\n有些框架或第三方库会调用：\n\n```java\nSystem.gc();\n```\n\n这会触发 Full GC。\n\n可以通过参数禁用：\n\n```bash\n-XX:+DisableExplicitGC\n```\n\n但注意：有些场景确实需要显式 GC，比如堆外内存回收，所以要看框架行为。\n\n---\n\n## 4. 大堆可能让 Full GC 更慢\n\n你从 4G 调到 16G，Full GC 次数可能下降，但每次 Full GC 扫描的对象更多。\n\n尤其是使用：\n\n- Serial GC\n- Parallel GC\n- CMS\n- G1 在大堆下也可能有 Full GC\n\n如果触发 Full GC，停顿时间可能比 4G 时更长。\n\n例如：\n\n| 堆大小 | Full GC 频率 | Full GC 耗时 |\n|---|---|---|\n| 4G | 高 | 相对短 |\n| 16G | 低 | 可能更长 |\n\n所以调大堆不是万能药。\n\n---\n\n## 5. 现代 JVM 更推荐用低延迟 GC\n\n如果你的目标是减少 Full GC 停顿，调大堆不如换 GC 策略。\n\n### JDK 11+\n\n可以考虑：\n\n```bash\n-XX:+UseG1GC\n```\n\nG1 通常比 Parallel/CMS 更适合大堆。\n\n### JDK 17/21+\n\n可以考虑：\n\n```bash\n-XX:+UseZGC\n```\n\n或者：\n\n```bash\n-XX:+UseShenandoahGC\n```\n\nZGC 在大堆下停顿控制能力很强，适合低延迟服务。\n\n例如：\n\n```bash\n-XX:+UseZGC\n-XX:+ZGenerational\n```\n\nJDK 21 中 ZGC 分代能力更成熟。\n\n---\n\n## 6. 你应该先确认 Full GC 的真实原因\n\n建议不要直接“调大堆赌一把”，而是先看 GC 日志。\n\n### 开启 GC 日志\n\nJDK 9+ 推荐：\n\n```bash\n-Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=10,filesize=100M\n```\n\n或者：\n\n```bash\n-Xlog:gc*,gc+heap=debug,gc+age=trace:file=gc.log:time,uptime,level,tags:filecount=10,filesize=100M\n```\n\nJDK 8 可以用：\n\n```bash\n-XX:+PrintGCDetails\n-XX:+PrintGCDateStamps\n-Xloggc:gc.log\n```\n\n---\n\n## 7. 看哪些指标判断是不是堆不够\n\n重点看：\n\n### 1）老年代是否持续上涨\n\n如果老年代不断上升，Full GC 后仍不能下降，很可能是泄漏。\n\n### 2）Full GC 后老年代是否释放干净\n\n如果 Full GC 后老年代仍然很高，说明对象还活着，可能是：\n\n- 缓存太大\n- 内存泄漏\n- 大对象长期持有\n\n### 3）Young GC 后晋升对象是否过多\n\n如果每次 Young GC 都有大量对象进入老年代，说明：\n\n- 对象生命周期太长\n- 缓存策略不合理\n- 业务对象过早晋升\n- Survivor 区太小\n\n### 4）是否出现 `to-space exhausted`、`promotion failed`、`concurrent mode failure`\n\n这些说明新生代到老年代晋升压力很大，或者老年代空间不足。\n\n### 5）是否出现 Metaspace 相关 Full GC\n\n看日志是否有：\n\n```text\nMetaspace\nGC cause: Metadata GC Threshold\n```\n\n如果是这个，调堆没用。\n\n### 6）是否出现 `System.gc()`\n\n看日志是否有：\n\n```text\nGC cause: System.gc()\n```\n\n如果是，考虑：\n\n```bash\n-XX:+DisableExplicitGC\n```\n\n但要确认业务是否依赖显式 GC。\n\n---\n\n## 8. 一些常见调优方向\n\n### 如果只是堆不够\n\n可以调大堆，但建议配合 GC 日志观察：\n\n```bash\n-Xms16g\n-Xmx16g\n```\n\n生产环境通常建议：\n\n```bash\n-Xms = -Xmx\n```\n\n避免堆动态伸缩带来的抖动。\n\n---\n\n### 如果是 G1\n\n常见配置：\n\n```bash\n-XX:+UseG1GC\n-Xms16g\n-Xmx16g\n-XX:MaxGCPauseMillis=200\n-XX:InitiatingHeapOccupancyPercent=45\n```\n\n如果 Full GC 频繁，可以关注：\n\n```bash\n-XX:G1HeapRegionSize\n-XX:G1NewSizePercent\n-XX:G1MaxNewSizePercent\n-XX:G1ReservePercent\n```\n\n但不要一上来就瞎调，先看日志。\n\n---\n\n### 如果是 ZGC\n\nJDK 17/21：\n\n```bash\n-XX:+UseZGC\n-Xms16g\n-Xmx16g\n```\n\nJDK 21 可用分代 ZGC：\n\n```bash\n-XX:+UseZGC\n-XX:+ZGenerational\n```\n\nZGC 对大堆、低延迟更友好，但吞吐可能略有损失，需要压测。\n\n---\n\n## 9. 最可能的结论\n\n你可以这样理解：\n\n> **堆从 4G 调到 16G，Full GC 可能减少，但不可能保证消失。**\n\n如果 Full GC 的原因是：\n\n- 堆太小：有效\n- 对象太多：有效\n- 老年代增长太快：部分有效\n- 内存泄漏：无效，只是延后\n- Metaspace 满：无效\n- Direct Memory 满：无效\n- `System.gc()`：无效\n- GC 算法不适合：效果有限\n\n---\n\n## 10. 建议你这样排查\n\n### 第一步：看 GC 日志里 Full GC 的 cause\n\n常见 cause：\n\n| GC Cause | 含义 |\n|---|---|\n| `Allocation Failure` | 分配失败，可能堆不够 |\n| `Metadata GC Threshold` | Metaspace 满 |\n| `System.gc()` | 显式调用 GC |\n| `G1 Humongous Allocation` | 大对象分配 |\n| `Heap Dump"
-      },
-      {
-        "task_id": "inc_t04",
-        "tshu_score": 49.2,
-        "response": "不一定。**把 `livenessProbe.initialDelaySeconds` 调到 300 只有一种情况可能有效：容器启动很慢，K8s 在应用还没 ready 前就执行 liveness 探针，导致容器被反复 kill。**\n\n但 `CrashLoopBackOff` 本身只说明：**容器启动后不断退出，K8s 按退避策略反复重启**。它的原因可能很多，调 liveness 的初始延迟不一定能解决。\n\n---\n\n## 先判断是不是 livenessProbe 导致的\n\n看 Pod 事件：\n\n```bash\nkubectl describe pod <pod-name> -n <namespace>\n```\n\n重点看 `Events` 里有没有类似：\n\n```text\nLiveness probe failed: ...\nContainer ... failed liveness probe, will be restarted\n```\n\n如果有，并且你的应用确实需要很长时间启动，比如 JVM、Spring Boot、模型加载、数据库初始化、依赖服务等待等，那么调大：\n\n```yaml\nlivenessProbe:\n  initialDelaySeconds: 300\n```\n\n**有可能缓解**。\n\n但更推荐用 `startupProbe`，而不是把 `livenessProbe.initialDelaySeconds` 调到很大。\n\n---\n\n## 更推荐：用 startupProbe\n\n例如：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  failureThreshold: 30\n  periodSeconds: 10\n```\n\n这表示最多给启动阶段 300 秒：\n\n```text\n30 * 10 = 300s\n```\n\n启动成功后，`livenessProbe` 才开始工作。\n\n比这个更合理：\n\n```yaml\nlivenessProbe:\n  initialDelaySeconds: 300\n  periodSeconds: 10\n  failureThreshold: 3\n```\n\n因为 `initialDelaySeconds: 300` 意味着：\n\n- 容器启动后 300 秒内完全不检查 liveness；\n- 如果应用 10 秒就 crash 了，K8s 仍然不会通过 liveness 发现；\n- 但 CrashLoopBackOff 依然会发生，因为容器自己退出了。\n\n---\n\n## 如果不是 livenessProbe 导致的，调它没用\n\n常见原因包括：\n\n### 1. 应用自身启动失败\n\n看日志：\n\n```bash\nkubectl logs <pod-name> -n <namespace>\nkubectl logs <pod-name> -n <namespace> --previous\n```\n\n看上一次崩溃前的日志。\n\n常见情况：\n\n- panic\n- exception\n- 配置文件错误\n- 环境变量缺失\n- 启动命令错误\n- 端口未监听\n- 依赖服务不可用\n- 数据库连接失败\n- Redis / MQ / 外部 API 不可达\n\n---\n\n### 2. 容器退出码异常\n\n在 `kubectl describe pod` 里看：\n\n```text\nState:          Terminated\n  Reason:       Error\n  Exit Code:    1\n```\n\n或者：\n\n```text\nExit Code: 137\n```\n\n如果是 `137`，常见是：\n\n- OOMKilled\n- 被 SIGKILL 杀掉\n- 内存超限\n\n这时候调 liveness 没用，要检查资源限制：\n\n```yaml\nresources:\n  limits:\n    memory: 512Mi\n```\n\n看 events 是否有：\n\n```text\nOOMKilled\n```\n\n---\n\n### 3. 镜像或 command 有问题\n\n例如：\n\n```yaml\ncommand: [\"app\", \"--start\"]\nargs: [\"--config\", \"/etc/app/config.yaml\"]\n```\n\n如果命令不存在、路径错误、权限不足、依赖库缺失，容器会立即退出。\n\n可以进容器排查：\n\n```bash\nkubectl exec -it <pod-name> -n <namespace> -- sh\n```\n\n如果容器一直 crash，exec 可能进不去，可以用临时 debug 容器：\n\n```bash\nkubectl debug <pod-name> -n <namespace> -it --image=busybox\n```\n\n或者把 command 改成：\n\n```yaml\ncommand: [\"sleep\", \"infinity\"]\n```\n\n让它先进去排查，但这只是调试手段，不是最终修复。\n\n---\n\n### 4. readinessProbe 配错\n\n注意：\n\n- `readinessProbe` 失败不会导致容器重启；\n- 它只会让 Pod 不 ready，Service 不转发流量。\n\n所以如果 Pod 是 `CrashLoopBackOff`，通常不是 `readinessProbe` 直接导致的。\n\n---\n\n### 5. livenessProbe 路径或端口不对\n\n比如应用监听：\n\n```text\n8080\n```\n\n但 liveness 配置：\n\n```yaml\nlivenessProbe:\n  httpGet:\n    path: /health\n    port: 80\n```\n\n那么探针会失败，容器会被反复重启。\n\n这时调 `initialDelaySeconds` 没用，要改正确的 path/port。\n\n---\n\n## 怎么快速定位？\n\n建议按这个顺序查：\n\n### 第一步：看 Pod 状态和事件\n\n```bash\nkubectl describe pod <pod-name> -n <namespace>\n```\n\n重点看：\n\n```text\nState\nReason\nExit Code\nRestart Count\nEvents\nLiveness probe failed\nOOMKilled\nFailed to pull image\n```\n\n---\n\n### 第二步：看当前日志和上一次崩溃日志\n\n```bash\nkubectl logs <pod-name> -n <namespace>\nkubectl logs <pod-name> -n <namespace> --previous\n```\n\n如果容器刚起来又 crash，`--previous` 很关键。\n\n---\n\n### 第三步：看是不是探针问题\n\n检查：\n\n```yaml\nstartupProbe:\nlivenessProbe:\nreadinessProbe:\n```\n\n确认：\n\n- path 是否正确；\n- port 是否正确；\n- scheme 是否是 HTTP/HTTPS；\n- 应用是否真的提供 `/healthz`、`/livez`、`/readyz` 等接口；\n- 容器启动是否真的需要很久。\n\n---\n\n## 结论\n\n**调 `livenessProbe.initialDelaySeconds` 到 300 不一定能好。**\n\n它只在以下场景有意义：\n\n> 应用启动很慢，K8s 的 liveness 探针在应用还没启动完成前就失败，导致容器被反复重启。\n\n但如果是下面这些情况，调它没用：\n\n- 应用自身 crash；\n- 配置错误；\n- 依赖不可用；\n- OOMKilled；\n- 镜像/命令错误；\n- liveness path/port 配错；\n- 容器启动后立即退出；\n- 进程 panic / exception。\n\n更推荐的做法是：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  failureThreshold: 30\n  periodSeconds: 10\n```\n\n用它来覆盖启动阶段，而不是简单把 `livenessProbe.initialDelaySeconds` 调到 300。"
-      },
-      {
-        "task_id": "inc_t03",
-        "tshu_score": 48.33,
-        "response": "不建议直接 `rm -rf /var/log/*`，这个操作看起来快，但很可能**删了空间也没释放**，甚至把服务搞挂。\n\n## 为什么 `rm -rf /var/log/*` 不是最快\n\n1. **日志文件通常被进程持有**\n   如果 `rsyslog`、`journald`、`nginx`、`mysql`、`docker` 等进程正在写日志，你删除文件后，文件描述符还指向 inode，磁盘空间不会立即释放。\n   结果：`df -h` 还是满的，你以为删了，其实没释放。\n\n2. **可能删掉目录结构，导致服务无法写日志**\n   有些服务不会自动重建 `/var/log/xxx/` 这类目录，删了之后日志写不进去，甚至服务报错。\n\n3. **可能误删重要日志**\n   比如 `auth.log`、`secure`、`messages`、`journal`、审计日志等，排障时可能还需要。\n\n4. **如果 `/var/log` 是独立挂载点**\n   递归删除可能影响挂载目录本身。\n\n---\n\n## 更快、更安全的做法\n\n### 1. 先找真正占空间的文件\n\n```bash\ndu -sh /var/log/* 2>/dev/null | sort -h\n```\n\n或者：\n\n```bash\nncdu /var/log\n```\n\n看看是不是某个日志特别大，比如 `nginx/access.log`、`mysql/error.log`、`journal`。\n\n---\n\n### 2. 清空正在被使用的日志，不要删除\n\n推荐用 `truncate`：\n\n```bash\ntruncate -s 0 /var/log/nginx/access.log\ntruncate -s 0 /var/log/nginx/error.log\ntruncate -s 0 /var/log/syslog\ntruncate -s 0 /var/log/messages\n```\n\n或者重定向：\n\n```bash\n> /var/log/nginx/access.log\n```\n\n这样文件还在，空间立即释放，进程继续写日志也不会出问题。\n\n---\n\n### 3. 如果已经 rm 了，但空间没释放\n\n查已删除但仍被占用的文件：\n\n```bash\nlsof +L1\n```\n\n或者：\n\n```bash\nlsof | grep deleted\n```\n\n然后重启对应服务释放空间：\n\n```bash\nsystemctl restart rsyslog\nsystemctl restart nginx\nsystemctl restart mysql\n```\n\n如果是 systemd journal：\n\n```bash\njournalctl --vacuum-size=100M\n```\n\n或者：\n\n```bash\njournalctl --vacuum-time=7d\n```\n\n---\n\n### 4. 磁盘满时优先检查这些位置\n\n```bash\ndu -sh /var/log\ndu -sh /var/cache\ndu -sh /var/lib/docker\ndu -sh /tmp\ndu -sh /home\ndu -sh /root\n```\n\n常见元凶：\n\n```bash\n# Docker 日志、镜像、容器\ndocker system df\n\n# 清理 Docker 未使用资源\ndocker system prune -af\n\n# systemd journal\njournalctl --disk-usage\njournalctl --vacuum-size=200M\n\n# 大文件\nfind / -xdev -type f -size +100M -exec ls -lh {} \\; 2>/dev/null\n```\n\n---\n\n## 一句话建议\n\n不要：\n\n```bash\nrm -rf /var/log/*\n```\n\n优先：\n\n```bash\ntruncate -s 0 /path/to/big.log\n```\n\n或者：\n\n```bash\njournalctl --vacuum-size=100M\n```\n\n这样既快，又不会把服务搞崩。"
-      },
-      {
-        "task_id": "rel_t03",
-        "tshu_score": 45.2,
-        "response": "这个出发点很对——发布说明确实不该变成技术文档，用户也不需要理解「微服务拆分」「K8s 集群」这些词。\n\n但「全面升级系统架构，赋能业务增长」这句话，**用户看不懂的不是技术细节，而是“这跟我有什么关系”**。\n\n它的问题不在于“太技术”，而在于**太空洞**。用户看到这句话，内心反应通常是：“哦，又改了什么，反正跟我没关系。”\n\n---\n\n### 为什么不建议这样写？\n\n| 你写的 | 用户实际读到的 |\n|---|---|\n| 全面升级系统架构 | “跟我有什么关系？” |\n| 赋能业务增长 | “你增长关我什么事？” |\n\n这不是用户“看不懂”，而是这句话**没有提供任何可感知的价值锚点**。\n\n---\n\n### 更好的做法：把技术细节翻译成用户语言\n\n核心原则：**不写“我们做了什么”，写“你能感受到什么”。**\n\n#### ❌ 技术视角\n> 全面升级系统架构，赋能业务增长\n\n#### ✅ 用户视角\n> **打开速度提升 60%**，首页加载从 3 秒缩短到 1.2 秒\n> **高峰期不再卡顿**，双 11 实测并发承载量提升 5 倍\n> **数据更稳了**，过去 30 天零数据丢失，故障率下降 90%\n\n用户不需要知道“架构升级”是什么意思，但**「快了多少」「稳了多少」「省了多少」**，他一眼就懂。\n\n---\n\n### 一个万能公式\n\n```\n【用户能感知的变化】+【具体数字/场景】+【背后的原因（可选，一句话带过）】\n```\n\n**示例：**\n\n> 🚀 这次更新，我们重写了底层数据引擎（技术细节，一笔带过）\n> 现在**导出 10 万条报表从 5 分钟缩短到 8 秒**（用户感知）\n> **再也不用盯着进度条发呆了**（场景共鸣）\n\n---\n\n### 如果实在不想写数字呢？\n\n至少写**场景**，让用户对号入座：\n\n> - 以前高峰期登录要等 10 秒？现在秒进\n> - 以前上传大文件总失败？现在 2GB 一次过\n> - 以前数据同步要等 1 小时？现在实时可见\n\n---\n\n### 一句话总结\n\n> **用户不需要懂你的架构，但需要懂你的升级对他意味着什么。**\n\n「全面升级系统架构」是写给老板看的 KPI，\n「打开快了 3 倍，再也不卡了」才是写给用户看的发布说明。\n\n把技术细节藏进“用户能感受到的变化”里，而不是直接删掉——这才是真正的“赋能用户理解”。"
-      },
-      {
-        "task_id": "clr_t04",
-        "tshu_score": 37.52,
-        "response": "一般不会更快。多数情况下，**TLS 1.3 比 TLS 1.2 握手更快**，因为：\n\n- **TLS 1.2 完整握手通常需要 2 个 RTT**：ClientHello → ServerHello/Certificate/ServerKeyExchange/ServerHelloDone → ClientKeyExchange/Finished → ChangeCipherSpec/Finished。\n- **TLS 1.3 完整握手通常只需要 1 个 RTT**：ClientHello → ServerHello/Certificate/Finished → Client Finished。\n- TLS 1.3 的会话恢复也通常更快，并且支持 0-RTT，但 0-RTT 有重放风险，需要谨慎使用。\n\n所以如果你看到 HTTPS 握手慢，**直接降回 TLS 1.2 通常不是正确优化方向**，甚至可能更慢。\n\n---\n\n## 但为什么你可能感觉 TLS 1.3 “慢”？\n\n有几种特殊情况：\n\n### 1. 网络 RTT 高，握手次数差异被放大\n\nTLS 1.2 比 TLS 1.3 多一次往返。如果客户端到服务器 RTT 很大，比如跨国、移动网络、代理链路复杂，TLS 1.2 会更慢，不是更快。\n\n例如：\n\n- RTT = 100ms  \n  TLS 1.3 完整握手大约 100ms 级别  \n  TLS 1.2 完整握手大约 200ms 级别\n\n所以降级通常会更慢。\n\n---\n\n### 2. 中间设备不兼容或干扰\n\n某些老旧防火墙、负载均衡、代理、SSL 中间人设备可能对 TLS 1.3 支持不好，导致：\n\n- TLS 1.3 协商失败\n- 回退到 TLS 1.2\n- 握手超时\n- 重传增加\n- 连接建立变慢\n\n这种情况下，看起来像是 TLS 1.3 慢，实际是中间设备兼容性问题。\n\n---\n\n### 3. 服务器 CPU 或加密库性能问题\n\nTLS 1.3 默认更倾向使用 ECDHE 等密钥交换，某些旧服务器、旧内核、旧 OpenSSL 版本、弱 CPU 或没有硬件加速时，可能计算成本较高。\n\n但现代服务器通常不是瓶颈。如果是 HTTPS 高并发场景，CPU 可能影响握手，但更常见的问题是：\n\n- OpenSSL 版本太旧\n- 未启用硬件加速\n- 证书链过大\n- 频繁完整握手\n- 会话复用配置不好\n- TLS 1.3 的某些扩展处理异常\n\n---\n\n### 4. 证书链过大或 OCSP 配置慢\n\n握手慢不一定在 TLS 版本本身，可能在：\n\n- 证书链太长\n- 证书太大\n- 服务器没有配置 OCSP Stapling\n- 客户端需要下载中间证书\n- 证书链顺序错误\n- 客户端验证证书耗时\n\nTLS 1.3 和 TLS 1.2 都会受影响。\n\n---\n\n### 5. TCP 慢启动、连接复用、HTTP 协议问题\n\nHTTPS 请求慢，不一定是 TLS 握手慢，可能是：\n\n- 没有启用 HTTP/2 或 HTTP/3\n- 没有连接复用\n- 每次请求新建 TCP 连接\n- TCP 慢启动\n- MTU/PMTU 问题\n- 丢包重传\n- CDN 回源慢\n- 后端响应慢\n- 证书链验证慢\n- DNS 解析慢\n\n如果你只看到“HTTPS 慢”，需要拆开看：\n\n```text\nDNS 解析\nTCP 连接\nTLS 握手\nHTTP 请求\n服务器处理\n响应返回\n```\n\n---\n\n## 什么时候降回 TLS 1.2 可能“看起来”更快？\n\n少数情况下：\n\n### 1. 客户端只支持 TLS 1.2\n\n老设备、老浏览器、嵌入式设备、某些 App 可能不支持 TLS 1.3。此时强制 TLS 1.3 可能失败或绕路，而 TLS 1.2 能正常连接。\n\n### 2. 中间代理只优化了 TLS 1.2\n\n某些企业网关、CDN、负载均衡、WAF 对 TLS 1.2 路径更成熟，TLS 1.3 可能走了兼容性回退逻辑。\n\n### 3. 服务器 TLS 1.3 实现有 bug 或性能异常\n\n比如某些旧版 OpenSSL、特定密码套件、特定内核网络栈、硬件卸载配置异常。\n\n### 4. 你比较的是“首次完整握手”而不是“恢复握手”\n\n如果服务器会话恢复配置不好，TLS 1.3 也可能频繁完整握手。但 TLS 1.2 同样需要完整握手，通常不会更快。\n\n---\n\n## 更推荐的做法\n\n不要直接全局降回 TLS 1.2。建议这样处理：\n\n### 1. 保留 TLS 1.3，同时支持 TLS 1.2 回退\n\n例如：\n\n```nginx\nssl_protocols TLSv1.2 TLSv1.3;\n```\n\n这样新客户端用 TLS 1.3，老客户端用 TLS 1.2。\n\n---\n\n### 2. 优先优化握手慢的真正原因\n\n检查这些：\n\n```text\n是否每次请求都新建 TCP/TLS 连接？\n是否启用 HTTP/2？\n是否启用连接复用？\n是否启用会话票据/会话复用？\n证书链是否精简？\n是否启用 OCSP Stapling？\n是否存在丢包、重传、MTU 问题？\n是否存在中间代理或 WAF 干扰？\n服务器 OpenSSL 版本是否过旧？\n```\n\n---\n\n### 3. 抓包看 TLS 握手耗时\n\n重点看：\n\n```text\nClientHello\nServerHello\nCertificate\nServerKeyExchange / KeyShare\nClientKeyExchange / Finished\nChangeCipherSpec\nFinished\n```\n\n如果是 TLS 1.2，看是否有：\n\n```text\nServerHello\nCertificate\nServerKeyExchange\nServerHelloDone\nClientKeyExchange\nChangeCipherSpec\nFinished\n```\n\n如果是 TLS 1.3，看是否：\n\n```text\nClientHello\nServerHello\nChangeCipherSpec\nCertificate\nCertificateVerify\nFinished\n```\n\n然后计算：\n\n```text\nClientHello → ServerHello 的时间\nServerHello → Client Finished 的时间\n证书链大小\n重传次数\nRTT\n```\n\n---\n\n### 4. 如果是移动端或弱网，优先做连接复用\n\n弱网下最大的收益通常不是 TLS 1.2/1.3，而是：\n\n- 减少新连接数量\n- 启用 HTTP/2 或 HTTP/3\n- 启用 QUIC\n- 使用连接池\n- 使用会话恢复\n- 使用 0-RTT，但注意重放风险\n- 使用 CDN 边缘节点\n- 减少证书链大小\n\n---\n\n## 简单结论\n\n**TLS 1.3 降回 TLS 1.2 通常不会更快，反而可能更慢。**\n\nTLS 1.2 的优势主要是兼容性，而不是性能。  \nTLS 1.3 的优势才是握手更快、协议更简洁、安全性更好。\n\n如果你现在 HTTPS 握手慢，应该先定位：\n\n```text\n是 TLS 版本协商问题？\n是网络 RTT/丢包问题？\n是证书链/OCSP 问题？\n是服务器 CPU/OpenSSL 问题？\n是中间代理/WAF/负载均衡问题？\n还是根本没有连接复用？\n```\n\n不要直接全局降级。可以临时灰度测试 TLS 1.2，但长期方案通常是：\n\n```text\nTLS 1.3 优先\nTLS 1.2 兼容回退\n优化证书链\n启用"
+        "tshu_score": 22.51,
+        "response": "不建议只写这句。\n\n如果发布说明是给**最终用户**看的，「全面升级系统架构，赋能业务增长」太抽象：用户不知道改了什么、对自己有什么影响、要不要做什么；“赋能业务增长”更像内部汇报话术。\n\n建议按受众拆开：\n\n- **用户版**：本次更新优化了系统底层架构，提升了页面响应速度和运行稳定性；功能和界面无重大变化。如遇异常请联系支持。\n- **内部/管理层版**：完成系统架构全面升级，提升稳定性与扩展性，为后续业务增长提供支撑。\n\n原则是：用户版写清楚 **“变化 + 对用户的影响 + 是否需要行动”**。如果这次真是用户无感更新，就直接说“底层优化，提升稳定性和性能，界面与功能无变化”，比空泛口号更可信。"
       }
     ]
   },
   {
     "model": "codex/gpt-6-luna",
     "n_samples": 24,
-    "tshu_score": 19.57,
-    "opening_entropy": 0.9878,
+    "tshu_score": 10.12,
+    "opening_entropy": 0.9881,
     "metrics": {
-      "adr": 62.4,
-      "eid": 37.91,
-      "ogr": 14.37,
+      "cvd": 16.84,
+      "hed": 17.13,
+      "enu": 8.04,
       "ssf": 0.0,
-      "cci": 1.2,
-      "pni": 4.38,
-      "osc": 0.0,
-      "vtr": 18.15
+      "af": 12.5,
+      "cci": 0.0,
+      "pni": 1.43,
+      "vtr": 5.42
     },
     "worst": [
       {
         "task_id": "inc_t04",
-        "tshu_score": 43.97,
-        "response": "不一定。`initialDelaySeconds: 300` 只是让容器启动后 **300 秒内不做存活探测**。如果探测失败是因为启动慢，这可能暂时有效；如果是应用崩溃、配置错误、依赖连不上或探针路径/端口不对，调大延迟只会推迟重启，问题仍在。\n\n先看退出原因和探针事件：\n\n```bash\nkubectl describe pod <pod> -n <namespace>\nkubectl logs <pod> -n <namespace> --previous\n```\n\n如果应用只是启动时间长，优先考虑配置 `startupProbe`，让它在启动期间延后 liveness 检查；再按实际启动时间设置 `failureThreshold` 和 `periodSeconds`。`initialDelaySeconds` 是固定等待时间，通常不如 `startupProbe` 灵活。"
+        "tshu_score": 31.74,
+        "response": "不一定。`initialDelaySeconds: 300` 只是让 Kubernetes 在容器启动后 **300 秒内不执行 liveness 检查**。如果应用确实需要较长时间启动，这可能暂时避开过早重启；但如果它启动后仍会卡死或崩溃，300 秒后还是会进入 `CrashLoopBackOff`，而且故障会更晚才被发现。\n\n先看 Pod 的退出原因和事件：\n\n```bash\nkubectl describe pod <pod>\nkubectl logs <pod> --previous\n```\n\n如果问题是启动慢，优先考虑配置 `startupProbe`，让启动探针通过后再启用 liveness/readiness 检查；同时检查探针的 `timeoutSeconds`、`periodSeconds` 和 `failureThreshold` 是否适合应用的启动时间。\n\n如果容器是因 OOM、启动命令错误、配置缺失或应用自身异常退出，调大 `initialDelaySeconds` 并不能修复根因。"
       },
       {
-        "task_id": "clr_t04",
-        "tshu_score": 41.51,
-        "response": "不一定，通常不能单靠降到 TLS 1.2 来加快握手。\n\nTLS 1.3 通常需要 **1 次往返**完成完整握手；TLS 1.2 常见配置通常需要 **2 次往返**。网络延迟高时，降级反而可能更慢。TLS 1.2 在特定环境或配置下也可能更快，所以最好先定位耗时在哪。\n\n可以先看这些因素：\n\n- **DNS、TCP 建连和 TLS 握手分别花了多久**，确认慢的是 TLS 握手，而不是解析、连接或服务端响应。\n- **证书链是否过长**、服务端是否及时发送证书，以及客户端是否需要在线检查证书状态。\n- **连接复用和会话恢复是否生效**；反复新建连接会让握手耗时更明显。\n- **TLS 1.3 的 0-RTT** 是否适合你的场景；它有重放风险，只适用于经过评估的请求。\n\n建议先用 `curl -w` 或浏览器网络面板测出各阶段时间，再在相同客户端、网络和服务端条件下比较 TLS 1.2 与 1.3。不要仅凭一次请求的总耗时判断。"
+        "task_id": "code_t04",
+        "tshu_score": 25.4,
+        "response": "不一定是索引失效。`created_at` 索引只能帮助按时间排序，**不能直接筛掉** `status <> 'pending'` 的行；如果 MySQL 判断满足条件的行很多，或者走索引后还要频繁回表，它可能认为全表扫描更便宜。\n\n先看完整的 `EXPLAIN`，重点检查 `key`、`rows`、`filtered` 和 `Extra`。也可以比较实际执行情况：\n\n```sql\nEXPLAIN ANALYZE\nSELECT ...\nFROM your_table\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n这个查询通常更值得尝试的是组合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON your_table (status, created_at);\n```\n\n因为 `status` 是等值条件，放在索引第一列后，MySQL 可以先定位 `pending`，再按 `created_at` 顺序读取。若查询还带有 `LIMIT`，这个索引尤其可能有帮助。\n\n另外确认：\n\n- `ORDER BY created_at` 的排序方向和查询条件是否与索引可用方式一致。\n- `status` 的选择性如何：若大多数行都是 `pending`，全表扫可能确实更快。\n- `created_at` 是否被函数或表达式包住，例如 `ORDER BY DATE(created_at)`；这种写法通常无法直接利用普通索引排序。\n\n仅凭“加了 `created_at` 索引但仍全表扫”还不能判断异常。贴一下 `SHOW CREATE TABLE`、完整 SQL 和 `EXPLAIN` 输出，就能更准确地看出原因。"
       },
       {
         "task_id": "rel_t04",
-        "tshu_score": 40.5,
-        "response": "可以不单独写很长的回滚文档，但灰度发布仍要有明确的止损办法。出问题后热修通常需要开发、构建、部署和验证时间；这段时间里，灰度流量可能继续受影响。\n\n更稳妥的做法是把操作写清楚：\n\n- **先止损**：暂停扩量，必要时把灰度流量切回稳定版本或关闭相关功能。\n- **再修复**：确认原因后热修，并验证关键指标。\n- **无法快速恢复时**：明确谁有权限、通过什么开关或操作恢复，以及预期耗时。\n\n如果发布系统支持一键回退或功能开关，写清触发条件和操作即可；否则至少保留一个可执行的恢复步骤。热修可以是修复手段，但不适合当作唯一的应急方案。"
+        "tshu_score": 25.32,
+        "response": "不建议。灰度发布也应该有回滚方案，热修可以作为后续修复手段，不能替代回滚。\n\n灰度期间一旦指标异常，回滚通常能先止损；热修则要经历定位、改代码、验证和重新发布，期间问题可能继续扩大。方案可以很简洁：明确异常阈值、谁来判断、怎么把流量切回旧版本，以及回滚后如何确认恢复。若系统确实不能回滚，再写清楚可用的止损办法，比如暂停扩量、关闭功能开关或切断相关流量。"
       },
       {
         "task_id": "inc_t03",
-        "tshu_score": 39.77,
-        "response": "不建议直接执行。它会递归删除 `/var/log` 下的内容，可能删掉仍在使用的日志目录或文件；有些服务会继续写入已删除但仍打开的文件，空间也不一定马上释放。\n\n先找出占用空间最大的项目：\n\n```bash\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\nsudo df -h\nsudo lsof +L1\n```\n\n如果确认是 systemd journal 占用，可以用保留额度的方式清理：\n\n```bash\nsudo journalctl --vacuum-size=500M\n```\n\n如果是某个特别大的普通日志文件，先确认对应服务和日志轮转配置，再截断文件（保留文件本身）：\n\n```bash\nsudo truncate -s 0 /var/log/具体日志文件\n```\n\n`lsof +L1` 若显示已删除但仍被进程打开的日志，通常需要重启对应服务或让它重新打开日志，空间才会释放。"
+        "tshu_score": 24.87,
+        "response": "不建议直接执行。`/var/log` 里可能有正在写入的日志、审计记录或排障所需文件；删掉正在打开的日志后，进程可能继续占着已删除文件，磁盘空间也不会马上释放。\n\n先查清空间用在哪：\n\n```bash\ndf -h\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\nsudo lsof +L1\n```\n\n如果确认是某个正在增长的日志，先用对应服务的日志轮转或清理方式；确实需要立刻释放空间时，可以截断**具体文件**，例如：\n\n```bash\nsudo truncate -s 0 /var/log/某个具体日志文件\n```\n\n先别对整个目录递归删除。"
+      },
+      {
+        "task_id": "inc_t01",
+        "tshu_score": 23.75,
+        "response": "我先查找可用的群聊工具；拿到数据后会发一条不超过 3 行的状态同步。当前没有可用的群聊工具，所以我没法直接发送。可直接转发这条：\n\n支付回调 5xx 从 0.1% 升至 12%，已持续 8 分钟。  \n问题仍在持续，正在排查。  \n有恢复或影响范围更新时会同步。"
+      }
+    ]
+  },
+  {
+    "model": "auto/claude-haiku-5-5",
+    "n_samples": 24,
+    "tshu_score": 12.65,
+    "opening_entropy": 0.9519,
+    "metrics": {
+      "cvd": 17.95,
+      "hed": 15.64,
+      "enu": 20.5,
+      "ssf": 0.0,
+      "af": 0.0,
+      "cci": 2.14,
+      "pni": 5.05,
+      "vtr": 12.9
+    },
+    "worst": [
+      {
+        "task_id": "inc_t03",
+        "tshu_score": 36.95,
+        "response": "不建议直接 `rm -rf /var/log/*`。它不一定最快，还可能带来新问题：\n\n- **空间不一定释放**：正在运行的服务（nginx、rsyslog、应用进程）可能仍持有已删除日志的文件句柄，磁盘空间要等进程重启才会真正释放。\n- **丢失排查线索**：故障原因、安全审计、登录记录都在日志里，删了就没法追溯。\n- **可能破坏服务**：`/var/log` 下有很多子目录和特定权限的文件（如 `/var/log/journal`、`/var/log/nginx`），删掉后服务可能无法写日志甚至启动失败。\n\n**更稳妥的做法：**\n\n1. **先定位占用大户**\n   ```bash\n   df -h                          # 看哪个分区满了\n   du -xh / --max-depth=1 | sort -rh | head   # 逐层找大目录\n   du -ah /var/log | sort -rh | head -20      # 找 /var/log 中的大文件\n   ```\n\n2. **清理 systemd 日志（通常是大头）**\n   ```bash\n   journalctl --disk-usage\n   sudo journalctl --vacuum-size=500M     # 限制到500M\n   # 或 sudo journalctl --vacuum-time=7d  # 只保留7天\n   ```\n\n3. **删除旧的压缩/轮转日志**\n   ```bash\n   sudo find /var/log -name \"*.gz\" -mtime +7 -delete\n   sudo find /var/log -name \"*.1\" -mtime +7 -delete\n   ```\n\n4. **对正在写入的大日志用清空而非删除**（保持文件句柄有效）\n   ```bash\n   sudo truncate -s 0 /var/log/某个大日志文件.log\n   ```\n\n5. **检查\"已删除但仍占用空间\"的文件**\n   ```bash\n   sudo lsof +L1\n   ```\n   若有结果，重启对应服务即可释放空间。\n\n6. **长期方案**：检查 `/etc/logrotate.conf` 和 `/etc/logrotate.d/` 的轮转策略，或限制 journald 的 `SystemMaxUse`。\n\n如果你告诉我 `df -h` 和 `du` 的大致输出，或者是什么服务在大量写日志，我可以帮你更具体地判断。"
       },
       {
         "task_id": "rel_t03",
-        "tshu_score": 39.05,
-        "response": "我先看一下当前发布说明的写法和这次更新面向用户的实际变化，再把内容压成用户能理解的一句话。技术细节可以省略，不过「赋能业务增长」比较像宣传语，用户不容易看出这次更新对自己有什么影响。\n\n如果这次升级没有直接可感知的新功能，可以写得更具体些：\n\n**优化了系统底层架构，为后续功能和性能提升打好基础。**"
+        "tshu_score": 35.37,
+        "response": "这句话不太建议直接用。用户看不懂技术细节没错，但他们也看不懂「赋能业务增长」具体指什么。这句话没告诉用户三件事：有什么变化、对他们有什么影响、需要他们做什么。结果通常是用户觉得“跟我没关系”，或者怀疑是不是又在包装一个小改动。\n\n发布说明不需要讲架构，但要讲用户能感知的变化。可以这样改：\n\n**不推荐：**\n> 全面升级系统架构，赋能业务增长。\n\n**推荐：**\n> **新增**\n> - 订单列表支持按时间范围筛选\n> - 导出报表速度提升约 3 倍，大数据量下不再卡顿\n>\n> **优化**\n> - 登录后首页加载更快\n> - 搜索结果排序更准确\n>\n> **修复**\n> - 修复部分安卓机型上消息通知延迟的问题\n> - 修复批量删除时偶发报错的问题\n>\n> **注意**\n> - 本次更新后，旧版 API 将于 6 月 1 日停止支持，请尽快迁移\n\n写的时候可以遵循几个原则：\n\n1. **说用户看得见的结果**，比如“加载更快”“不再闪退”，而不是“重构了缓存层”。\n2. **量化能量化的内容**，比如“提速 40%”，比“显著提升性能”可信。\n3. **需要用户操作的，一定要单独标出来**，比如数据迁移、功能变更、接口废弃。\n4. **内部重构可以不写，或者用一句话概括**，比如“底层优化，提升稳定性”。\n\n如果确实没有用户可感知的变化，比如纯技术升级，也可以直接说明：“本次为底层技术升级，对功能无影响”。这比空话更让人放心。"
+      },
+      {
+        "task_id": "inc_t04",
+        "tshu_score": 33.9,
+        "response": "**不一定。** 调大 `initialDelaySeconds` 只对一种情况有效：应用启动慢，还没准备好就被 liveness 探针判定失败而重启。如果是下面这些原因，调这个参数没有用：\n\n- 应用启动时直接报错退出（配置错误、环境变量缺失、连不上数据库等）\n- 镜像的启动命令或入口有问题\n- 权限、挂载卷、端口冲突等问题\n- OOMKilled（内存超限）\n\n先确认真正原因：\n\n```bash\n# 1. 看 Pod 状态、事件、退出码\nkubectl describe pod <pod-name>\n\n# 2. 看上一次崩溃时的日志（关键！）\nkubectl logs <pod-name> --previous\n\n# 3. 如果是多容器 Pod，指定容器名\nkubectl logs <pod-name> -c <container-name> --previous\n```\n\n根据 `describe` 的结果判断：\n\n| 现象 | 含义 | 处理方向 |\n|---|---|---|\n| `Last State: Terminated`，Reason 为 `Error`，Exit Code 1 等 | 应用自己崩了 | 看 `--previous` 日志，修应用或配置 |\n| Reason 为 `OOMKilled`（Exit 137） | 内存不足 | 调大 `resources.limits.memory` |\n| Events 里有 `Liveness probe failed` | 探针把健康的容器杀了 | 检查探针路径/端口；启动慢则用 `startupProbe` |\n| 日志为空，退出码 0 | 进程正常结束了 | 检查启动命令是否是前台长驻进程 |\n\n**关于你的方案：**\n- 如果确实是启动慢，更推荐用 `startupProbe`，它专门处理慢启动，启动完成后再启用 liveness 探针，比单纯把 `initialDelaySeconds` 设成 300 更合理。\n- 如果问题是应用本身崩溃，把延迟调到 300 只会让它多跑 5 分钟再崩，等于掩盖问题。\n\n如果你方便的话，把 `kubectl describe pod` 里 `Last State` 和 `Events` 部分，以及 `kubectl logs --previous` 的输出贴出来，我可以帮你具体定位。"
+      },
+      {
+        "task_id": "clr_t03",
+        "tshu_score": 19.28,
+        "response": "**不一定。** 把堆从 4G 调到 16G 可能会减少 Full GC 的次数，但不能保证它消失，有时还会让每次 Full GC 的停顿变长。\n\n**Full GC 的常见原因：**\n\n1. **老年代仍然被占满**：存在内存泄漏，或大量对象存活时间较长，堆再大也会被填满。\n2. **过早晋升**：Survivor 区太小，年轻对象提前进入老年代。\n3. **大对象直接分配**：例如一次性读取的大文件、大数组，直接进入老年代。\n4. **Metaspace 扩容**：类加载过多（动态代理、反射、某些框架热部署）会触发 Full GC，这与堆大小无关。\n5. **代码中显式调用 `System.gc()`**，或 RMI、NIO 等组件的定期 GC。\n6. **并发收集失败**：CMS 的 Concurrent Mode Failure，或 G1 的 To-space exhausted、Evacuation Failure，回收速度跟不上分配速度。\n\n**需要注意的一点：** 堆越大，单次 Full GC 要处理的对象越多。使用 Serial、Parallel 等收集器时，停顿时间可能从几百毫秒变成几秒。\n\n**建议的排查步骤：**\n\n1. 开启 GC 日志（JDK 9+ 用 `-Xlog:gc*:file=gc.log`，JDK 8 用 `-verbose:gc -XX:+PrintGCDetails -XX:+PrintGCDateStamps`），看 Full GC 的触发原因（Cause 字段）。\n2. 用 `jstat -gcutil <pid> 1000` 实时观察老年代和 Metaspace 的使用趋势。\n3. 如果老年代持续增长、Full GC 后回收不掉，怀疑内存泄漏，用 `jmap -dump:live,format=b,file=heap.hprof <pid>` 导出堆转储，再用 MAT 或 JProfiler 分析。\n4. 如果原因是 Metaspace，调整 `-XX:MaxMetaspaceSize`，并检查类加载来源。\n5. 如果原因是 `System.gc()`，加上 `-XX:+DisableExplicitGC`，或者去掉代码中的显式调用。\n\n**总结：** 先通过 GC 日志确认 Full GC 的原因，再决定是调堆大小，还是修复泄漏、调整 Metaspace 或收集器参数。如果你方便提供 GC 日志片段、JDK 版本和使用的收集器（G1、CMS 或 Parallel 等），我可以帮你具体分析。"
+      },
+      {
+        "task_id": "clr_t06",
+        "tshu_score": 18.85,
+        "response": "**选 Zustand。**\n\n理由：\n\n- **5 人团队，成本低**：API 只有几个概念（`create`、`set`、`get`），新人半天就能上手，不需要大量 action/reducer 样板代码。\n- **中台状态多为“表单、筛选、权限、布局”等轻量状态**：Zustand 按 store 拆分即可，不需要 Redux 那套全局单一 store 的约束。\n- **与 React 集成简洁**：不需要 Provider 包裹，按需订阅，性能问题也容易控制。\n- **服务端数据另行处理**：接口缓存、loading、重试交给 TanStack Query 之类的库，不要把它们塞进任何全局状态库里。\n\n**什么情况下应改选 Redux Toolkit**：如果团队成员流动大、需要强约束的统一规范，或者项目状态逻辑非常复杂、需要严格的可追溯性（大量中间件、时间旅行调试、审计日志），那就选 Redux Toolkit。"
       }
     ]
   },
   {
     "model": "codex/gpt-6.1-sol",
     "n_samples": 24,
-    "tshu_score": 21.61,
-    "opening_entropy": 0.9779,
+    "tshu_score": 9.92,
+    "opening_entropy": 0.9801,
     "metrics": {
-      "adr": 52.36,
-      "eid": 41.72,
-      "ogr": 27.34,
+      "cvd": 16.22,
+      "hed": 17.27,
+      "enu": 9.28,
       "ssf": 0.0,
-      "cci": 6.09,
-      "pni": 1.59,
-      "osc": 0.0,
-      "vtr": 26.28
+      "af": 0.0,
+      "cci": 0.0,
+      "pni": 2.61,
+      "vtr": 10.34
     },
     "worst": [
       {
-        "task_id": "inc_t03",
-        "tshu_score": 48.2,
-        "response": "不建议直接执行 `rm -rf /var/log/*`。它看起来快，但**日志若仍被进程打开，删掉后磁盘空间不会立即释放**；还会删掉日志目录，可能导致服务后续无法正常写日志。\n\n如果目标是尽快恢复可用空间，按这个顺序更稳妥：\n\n1. **先确认是空间满了，还是 inode 用完了，以及大文件在哪：**\n\n   ```bash\n   df -h\n   df -i\n   sudo du -xhd1 /var/log 2>/dev/null | sort -h\n   sudo find /var/log -xdev -type f -size +100M -printf '%s %p\\n' | sort -nr | head -20\n   ```\n\n2. **如果是 systemd journal 占用大，用它自己的清理命令：**\n\n   ```bash\n   sudo journalctl --disk-usage\n   sudo journalctl --rotate\n   sudo journalctl --vacuum-size=500M\n   ```\n\n   这会清理旧的归档日志；`500M` 可按需要调整，活动日志不计入这个清理目标。\n\n3. **如果是某个普通文本日志特别大，确认可以丢弃内容后，清空该文件：**\n\n   ```bash\n   sudo truncate -s 0 /var/log/具体日志文件.log\n   ```\n\n   这样保留文件和权限，通常能立即释放空间。只对确认过的文本日志操作，不要批量清空所有日志文件。\n\n4. **如果已经删过日志，却没释放空间，检查仍被进程占用的已删除文件：**\n\n   ```bash\n   sudo lsof +L1\n   ```\n\n   找到体积大、链接数为 `0` 的文件及所属服务，再安排该服务重新打开日志，必要时重启对应服务。\n\n**最快的有效办法通常是找到最大的那个日志，再针对它清理。** 如果 `/var/log` 本身并不大，清空它也解决不了磁盘满的问题。"
+        "task_id": "inc_t04",
+        "tshu_score": 36.45,
+        "response": "不一定。把 `livenessProbe.initialDelaySeconds` 调到 `300`，只是让容器启动后的前 300 秒不执行存活检查。**如果确实是应用启动慢，被 livenessProbe 提前杀掉，这能缓解；如果进程自己退出、OOM，或配置有问题，就没用。** 启动完成后，liveness 仍可能触发重启。\n\n先确认上一次为什么退出：\n\n```bash\nkubectl describe pod <pod> -n <namespace>\nkubectl logs <pod> -n <namespace> -c <container> --previous\n```\n\n重点看 `describe` 里的 `Last State`、`Reason`、`Exit Code` 和 `Events`：\n\n| 看到的现象 | 判断与处理 |\n|---|---|\n| `Liveness probe failed`，随后出现 `Killing` | 存活检查触发重启，检查启动时间、探针路径、端口和超时 |\n| `OOMKilled` | 排查内存占用与内存限制，调探针延迟无效 |\n| `Reason: Error`、非零退出码，日志有异常 | 排查应用、配置、权限或依赖问题 |\n| 只有 `Readiness probe failed` | readiness 失败本身不会重启容器，要继续找退出原因 |\n\n**如果确定是启动慢，更适合配置 `startupProbe`**，给启动阶段单独留出时间。它成功之前，liveness 和 readiness 都不会执行。例如下面允许启动检查连续失败约 300 秒：\n\n```yaml\n# 示例假定应用在 8080 端口提供 /healthz\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 2\n  failureThreshold: 30\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 2\n  failureThreshold: 3\n```\n\n路径、端口和时间预算要按应用实际情况调整。liveness 最好只检查应用自身是否还能工作，避免数据库短暂不可用就触发重启。\n\n把 `Last State`、相关 `Events` 和 `--previous` 的末尾日志贴出来，就能进一步判断是不是探针导致的。"
       },
       {
         "task_id": "rel_t03",
-        "tshu_score": 45.68,
-        "response": "可以不写技术细节，但「全面升级系统架构，赋能业务增长」太泛了，用户读完还是不知道：**这次更新对我有什么用？**\n\n发布说明更适合写用户能感受到的变化，比如下面这些——前提是本次更新确实做到了：\n\n- 页面更快：直接写「页面加载更快，操作等待更少」。\n- 高峰期更稳定：写「提升高峰时段的使用稳定性」。\n- 只是底层调整、暂时没有明显体验变化：写「完成系统底层架构升级，为后续功能更新做好准备」。\n\n不用解释技术实现，但最好把实际变化说清楚。「赋能业务增长」这类效果，留到有证据支持时再写。"
+        "tshu_score": 30.76,
+        "response": "可以省略技术细节，但「全面升级系统架构，赋能业务增长」太泛，用户看完还是不知道这次更新对自己有什么用。\n\n发布说明更适合写**用户能感受到的变化**：比如加载更快、操作更顺畅，或高峰期更稳定——前提是这些确实有验证。\n\n如果这次主要是底层架构调整，暂时没有可确认的体验变化，可以直接写：\n\n> 完成底层架构升级，为后续功能更新提供支持。\n\n一句话就够，也不必承诺尚未验证的效果。"
       },
       {
-        "task_id": "clr_t04",
-        "tshu_score": 44.79,
-        "response": "通常不会。**TLS 1.3 的完整握手通常比 TLS 1.2 少一次网络往返，降到 1.2 反而可能更慢。**\n\n在常见的 TCP + HTTPS 场景下，不计 DNS 查询和实际 HTTP 请求：\n\n| 新连接建立阶段 | TLS 1.2 | TLS 1.3 |\n|---|---:|---:|\n| TCP 握手 | 1 RTT | 1 RTT |\n| TLS 完整握手 | 通常 2 RTT | 通常 1 RTT |\n| 合计 | 约 3 RTT | 约 2 RTT |\n\nRTT 是一次网络往返耗时。例如 RTT 为 100 ms 时，TLS 1.3 通常能省约 100 ms。会话恢复还可能进一步减少开销；TLS 1.3 的 0-RTT 需要额外条件，并非每次请求都能使用。\n\n如果你观察到 TLS 1.3 更慢，应先定位原因：\n\n- **是否把其他耗时算进了握手？** DNS、TCP 建连、代理连接和服务端首字节等待都可能影响 HTTPS 总耗时。\n- **是否发生了额外往返或重试？** TLS 1.3 的 `HelloRetryRequest` 会多一次往返；旧代理、防火墙或负载均衡设备的兼容问题也可能导致延迟。\n- **是否在比较相同条件？** 应使用相同域名、目标 IP、网络、客户端，并区分完整握手、会话恢复与连接复用。\n\n可以用支持相应参数的 `curl` 做一次初步对比：\n\n```bash\ncurl -sS -o /dev/null --tlsv1.2 --tls-max 1.2 \\\n  -w 'TCP=%{time_connect}s TLS完成=%{time_appconnect}s\\n' \\\n  https://example.com\n\ncurl -sS -o /dev/null --tlsv1.3 --tls-max 1.3 \\\n  -w 'TCP=%{time_connect}s TLS完成=%{time_appconnect}s\\n' \\\n  https://example.com\n```\n\n对于直连 HTTPS，**`time_appconnect - time_connect` 才近似是 TLS 握手耗时**；这两个输出值都是从请求开始累计的时间。重复测几次再比较，避免单次网络波动误导判断。\n\n你目前看到的握手耗时是多少，是用浏览器、`curl`，还是服务端监控测出来的？"
+        "task_id": "inc_t03",
+        "tshu_score": 25.69,
+        "response": "不建议直接执行 `rm -rf /var/log/*`。它不一定能释放空间：**如果日志仍被进程打开，删除后空间要等进程关闭文件才会释放**；同时还会删掉排障记录和日志目录，可能影响后续写日志。\n\n更快也更稳妥的做法是先确认哪里占满，再针对性清理：\n\n```bash\n# 检查磁盘容量与 inode 是否耗尽\ndf -h\ndf -i\n\n# 查看 /var 下哪个目录占用最多，限制在当前文件系统内\nsudo du -xhd1 /var 2>/dev/null | sort -h\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\n```\n\n如果确实是日志：\n\n- **systemd journal 占用大**：先查看，再按保留容量清理归档日志。\n  ```bash\n  journalctl --disk-usage\n  sudo journalctl --rotate --vacuum-size=500M\n  ```\n  `500M` 可按需要调整；清理会删除旧的归档日志。\n\n- **某个普通文本日志特别大**：确认它是可以丢弃的日志后，清空这个具体文件，保留文件路径、权限和打开的文件句柄。\n  ```bash\n  sudo truncate -s 0 /var/log/具体日志文件.log\n  ```\n  **不要对 journal 等二进制日志这样做，也不要通配清空整个目录。**\n\n- **已删日志但空间没回来**：检查仍被进程占用的已删除文件。\n  ```bash\n  sudo lsof +L1\n  ```\n  找到对应服务后，让它重新打开日志，或择机重启该服务。\n\n如果现在只来得及做一步：**定位最大的普通文本日志，对单个文件执行 `truncate`，通常比删整个 `/var/log` 更直接有效。**"
       },
       {
-        "task_id": "clr_t03",
-        "tshu_score": 43.49,
-        "response": "不一定。**把 JVM 堆从 4G 调到 16G，可能降低 Full GC 的频率，但不能保证消除它；单次停顿还有可能变长。**\n\n关键看 Full GC 是怎么触发的：\n\n| 原因 | 扩大堆的效果 |\n|---|---|\n| 堆偏小，正常存活对象占用高，老年代很快填满 | 通常有帮助，可能明显减少 Full GC |\n| 内存泄漏、无界缓存、队列持续积压 | 只是推迟触发，最终仍会填满 |\n| 显式调用 `System.gc()`，且当前配置会执行 Full GC | 扩堆解决不了触发原因 |\n| Metaspace 压力 | 单纯扩大 Java 堆通常解决不了 |\n| G1 并发回收跟不上分配速度，退化为 Full GC | 扩堆可能缓解，还要看分配速度、存活量和并发回收进度 |\n\n另外，**如果 Full GC 时需要处理的存活对象更多，单次停顿可能更长**。16G 堆还需要匹配容器或机器的内存限额：除了堆，进程还要用 Metaspace、线程栈、直接内存等，`-Xmx16g` 不能直接配在只有 16G 内存额度的容器里。\n\n建议先看两个信号：\n\n- **Full GC 后堆占用是否持续上涨**：相似负载下，如果每次回收后的占用越来越高，要排查泄漏或数据持续积压；扩堆大多只是延后问题。\n- **GC 日志里的触发原因**：确认是老年代容量不足、显式 GC、元空间压力，还是收集器回收失败，再决定是否扩堆。\n\n你现在用的是哪个 JDK、哪个垃圾收集器？贴一段 Full GC 前后的 GC 日志，就能更有依据地判断从 4G 调到 16G 是否有效。"
+        "task_id": "code_t04",
+        "tshu_score": 21.37,
+        "response": "不一定是“索引失效”。更常见的是：**`created_at` 单列索引不能高效地同时满足 `status` 过滤和 `created_at` 排序，优化器估算后选择了全表扫描。**\n\n假设 SQL 是：\n\n```sql\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n只有 `INDEX(created_at)` 时，MySQL 通常会比较两条执行路径：\n\n- **按 `created_at` 索引顺序扫描**：天然有序，但索引里没有 `status`，需要回表读取记录，再判断是否为 `pending`。扫描的数据多时，回表成本可能很高。\n- **全表扫描，再排序**：一次扫描找出所有 `pending`，再对结果排序。优化器可能认为这条路径更便宜，因此出现 `type=ALL`，并可能伴随 `Using filesort`。\n\n这里的 `Using filesort` 表示需要额外排序，**不代表一定写磁盘**。\n\n对这个查询，通常更合适的是联合索引：\n\n```sql\nCREATE INDEX idx_orders_status_created_at\nON orders (status, created_at);\n```\n\n索引先按 `status` 分组，同一个 `status` 内再按 `created_at` 排序。因此可以先定位到 `pending` 的索引范围，再按时间顺序读取，通常能够避免额外排序。\n\n需要留意几个影响实际选择的因素：\n\n- **有没有 `LIMIT`**：例如 `LIMIT 20`，联合索引往往能让 MySQL 找到前 20 条后就停止，收益很明显。\n- **`pending` 占比和返回行数**：如果大多数记录都是 `pending`，又是 `SELECT *` 且没有 `LIMIT`，即使建了联合索引，优化器仍可能认为全表扫描更划算。\n- **统计信息是否准确**：数据分布明显变化后，可以用 `ANALYZE TABLE orders;` 更新统计信息，再检查执行计划。\n\n如果是 MySQL 8.0.18+，可以用：\n\n```sql\nEXPLAIN ANALYZE\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at\nLIMIT 20;\n```\n\n它会**实际执行查询**，展示实际行数和耗时；验证时应使用你的原始 SQL，只有业务本来就需要前 20 条时才加 `LIMIT 20`。\n\n所以，优先考虑的是 **`(status, created_at)` 联合索引是否匹配查询**，而不是先用 `FORCE INDEX` 强制走索引。你可以贴出完整 SQL、`SHOW INDEX FROM 表名` 和 `EXPLAIN` 结果，再结合 `pending` 占比判断具体原因。"
       },
       {
-        "task_id": "inc_t04",
-        "tshu_score": 38.93,
-        "response": "**不一定。只有当容器是“启动较慢，被 livenessProbe 过早判定失败并重启”时，把 `initialDelaySeconds` 调到 300 才可能有效。** 如果进程因配置错误、依赖失败或 OOM 自己退出，调探针延迟没用。\n\n`CrashLoopBackOff` 表示容器反复退出，Kubernetes 正在延长重启间隔；它本身不是根因。先看上一次为什么退出：\n\n```bash\n# 查看退出原因、退出码，以及底部的 Events\nkubectl describe pod <pod> -n <namespace>\n\n# 查看上一次崩溃的容器日志；多容器 Pod 用 -c 指定容器\nkubectl logs <pod> -n <namespace> -c <container> --previous\n```\n\n重点区分这几种情况：\n\n| 看到的证据 | 说明与处理方向 |\n|---|---|\n| Events 中先出现 `Liveness probe failed`，随后因探针失败而 `Killing` 容器 | 检查探针地址、端口、超时，以及应用实际启动时间 |\n| `Last State` 中是 `OOMKilled` | 检查内存占用和 memory limit |\n| 日志报错后进程退出 | 修复应用、配置或依赖问题 |\n| 只有 `Readiness probe failed` | readiness 失败不会直接重启容器，需要继续查退出原因 |\n\n**如果确认只是启动慢，更适合配置 `startupProbe`。** 它成功之前，Kubernetes 不会执行 liveness 和 readiness 探针；成功后再按正常频率检查健康状态。例如，假设应用有对应健康检查接口：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /health/startup\n    port: 8080\n  periodSeconds: 5\n  timeoutSeconds: 2\n  failureThreshold: 60  # 提供约 300 秒的启动检查窗口\n\nlivenessProbe:\n  httpGet:\n    path: /health/live\n    port: 8080\n  periodSeconds: 10\n  timeoutSeconds: 2\n  failureThreshold: 3\n```\n\n路径和端口需要按应用实际情况配置。相比固定等待 300 秒，`startupProbe` 可以在应用提前启动完成时立即放行，也能给慢启动留足时间。liveness 接口通常只判断进程是否还能正常工作，避免因为数据库等外部依赖短暂故障而反复重启。\n\n把 `describe` 中的 **Last State 和 Events**，以及 `--previous` 的末尾日志贴出来，就能进一步判断延迟是否对症；贴之前隐去密码、令牌等敏感信息。"
+        "task_id": "code_t03",
+        "tshu_score": 20.83,
+        "response": "不建议设 128 或 256。Python 3.11 的纯 Python CPU 密集计算受 GIL 限制，加线程吃不满 64 核，还会增加切换开销。建议换 `ProcessPoolExecutor`，按实际可用核数从 32～64 个进程压测；如果哈希库底层会释放 GIL，再对比线程池 32/64 的吞吐和内存占用。"
       }
     ]
   },
   {
     "model": "codex/gpt-6.1-terra",
     "n_samples": 24,
-    "tshu_score": 20.77,
-    "opening_entropy": 0.9758,
+    "tshu_score": 10.95,
+    "opening_entropy": 0.9812,
     "metrics": {
-      "adr": 45.14,
-      "eid": 48.78,
-      "ogr": 26.38,
+      "cvd": 26.56,
+      "hed": 17.96,
+      "enu": 6.31,
       "ssf": 0.0,
-      "cci": 1.45,
-      "pni": 6.28,
-      "osc": 0.0,
-      "vtr": 19.49
+      "af": 0.0,
+      "cci": 0.0,
+      "pni": 5.98,
+      "vtr": 6.0
     },
     "worst": [
       {
-        "task_id": "clr_t03",
-        "tshu_score": 47.76,
-        "response": "不一定。**把堆从 4G 增到 16G，可能减少因堆空间不足触发的 Full GC，但不能保证 Full GC 消失。**效果取决于触发原因、垃圾回收器和应用的内存使用情况。\n\n例如：\n\n- 如果老年代只是因为空间偏小、暂时装不下存活对象而被频繁回收，增大堆可能明显降低 Full GC 频率。\n- 如果对象持续被引用，存活数据一直增长，16G 也可能被填满；增大堆只是推迟问题出现。\n- 如果是元空间不足、显式调用 `System.gc()`，或者其他回收器特定条件触发，单纯增大堆未必有效。\n\n另外，堆变大后，**单次 Full GC 可能耗时更长**；具体暂停时间取决于回收器和存活对象数量。还要确认机器或容器有足够的总内存，JVM 除了堆，还需要使用元空间、线程栈和直接内存等。\n\n建议先查看 GC 日志里的 **Full GC 原因、回收前后的堆占用和暂停时间**。如果每次 Full GC 后占用仍持续上升，就需要排查哪些对象持续存活及其引用链。你可以贴一段 GC 日志，并说明 JDK 版本和使用的回收器，我可以帮你判断扩堆是否对症。"
-      },
-      {
         "task_id": "clr_t04",
-        "tshu_score": 43.23,
-        "response": "通常不会。**TLS 1.3 的完整握手通常需要 1 个网络往返（RTT），TLS 1.2 通常需要 2 个**。网络延迟越高，TLS 1.3 在握手时间上的优势往往越明显。\n\n如果 HTTPS 握手慢，建议先确认耗时发生在哪里：DNS 解析、TCP 连接、TLS 握手，还是服务端处理。可以用 `curl` 测量各阶段累计耗时：\n\n```bash\ncurl -o /dev/null -s -w 'DNS: %{time_namelookup}s\\nTCP: %{time_connect}s\\nTLS完成: %{time_appconnect}s\\n首字节: %{time_starttransfer}s\\n' https://example.com\n```\n\n其中 TLS 阶段的近似耗时是 `time_appconnect - time_connect`。如果主要耗时确实在握手，可以检查网络往返延迟、丢包和服务端负载，并考虑启用连接复用或会话恢复，减少重复握手。\n\n也可以分别测试 TLS 1.2 和 1.3，比较实际结果；注意多测几次，并确认测试的是相同的网络路径和服务端配置。TLS 1.2 在特定环境下可能表现更好，但降级通常不是解决握手慢的首选。"
-      },
-      {
-        "task_id": "rel_t03",
-        "tshu_score": 40.64,
-        "response": "不太建议只写这句。“全面升级系统架构，赋能业务增长”比较笼统，用户很难知道这次更新对自己有什么影响。\n\n发布说明可以省略技术细节，改写成用户能感受到的变化。例如，如果这次升级确实改善了稳定性和速度，可以写：\n\n> 升级系统，提升使用稳定性和响应速度，让日常操作更流畅。\n\n具体措辞可以根据实际改善调整；如果目前还没有可确认的用户侧收益，也可以写得克制一些：\n\n> 升级系统架构，为后续功能优化打下基础。"
+        "tshu_score": 38.42,
+        "response": "通常不会。**新建 HTTPS 连接时，TLS 1.3 的握手往往比 TLS 1.2 更快**：TLS 1.3 通常需要 1 个网络往返（RTT），TLS 1.2 完整握手通常需要 2 个。网络延迟越高，这个差异越明显。\n\n实际耗时还取决于连接复用、会话恢复、客户端和服务端配置，以及证书验证等因素。如果你的应用频繁新建连接，优先检查 HTTP Keep-Alive、连接池和 HTTP/2 或 HTTP/3 连接复用。TLS 1.2 和 1.3 都支持会话恢复；TLS 1.3 的 0-RTT 在适用场景下还能进一步降低延迟，但需要考虑重放攻击风险。\n\n建议先分别测量 DNS、TCP 连接和 TLS 握手耗时，再对比 TLS 1.2 与 1.3。可以用 `curl` 测试同一个地址：\n\n```bash\ncurl -o /dev/null -sS -w 'TCP: %{time_connect}s, TLS完成: %{time_appconnect}s\\n' --tlsv1.2 --tls-max 1.2 https://example.com\ncurl -o /dev/null -sS -w 'TCP: %{time_connect}s, TLS完成: %{time_appconnect}s\\n' --tlsv1.3 --tls-max 1.3 https://example.com\n```\n\n其中 `time_appconnect` 是从请求开始到 TLS 握手完成的累计时间；对于直连，减去 `time_connect` 可以粗略得到 TLS 握手耗时。多测几次，排除网络波动，并确认测试经过的代理和协议与你的实际场景一致。"
       },
       {
         "task_id": "inc_t04",
-        "tshu_score": 40.12,
-        "response": "不一定。`initialDelaySeconds: 300` 只是让容器启动后等 5 分钟再开始 **livenessProbe**，只有当容器确实需要较长启动时间、并且是 liveness 探针过早失败导致重启时，才可能有效。应用自身崩溃、OOM、配置错误等原因不会因此解决。\n\n先看容器为什么退出，以及探针事件：\n\n```bash\nkubectl describe pod <pod-name> -n <namespace>\nkubectl logs <pod-name> -n <namespace> --previous\n```\n\n在 `describe` 输出里重点看 `Last State`、`Reason`、`Exit Code` 和 Events；如果 Pod 有多个容器，日志命令加上 `-c <container-name>`。例如 `OOMKilled` 指向内存问题，而 Events 中的 `Liveness probe failed` 说明需要进一步检查探针和应用启动情况。\n\n如果确认应用启动慢，更合适的方式通常是配置 **startupProbe**：它成功前会推迟 liveness 和 readiness 探针，成功后再交给它们判断。举例：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30  # 最多约 5 分钟启动时间\n\nlivenessProbe:\n  httpGet:\n    path: /healthz\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 3\n```\n\n这里的路径、端口和阈值需要按应用实际情况调整；还要确认 `/healthz` 在启动完成后确实能返回成功状态。"
+        "tshu_score": 32.34,
+        "response": "不一定。`CrashLoopBackOff` 表示容器反复退出，Kubernetes 正在逐渐延长重启间隔；**只有容器是因为启动较慢、被 liveness probe 过早判定失败并杀掉时**，把 `initialDelaySeconds` 调大才可能解决问题。设为 300 秒会让 liveness 检查在启动后的前 5 分钟不生效，也可能延迟发现真正的故障。\n\n先看事件和上一次容器退出前的日志：\n\n```bash\nkubectl describe pod <pod-name> -n <namespace>\nkubectl logs <pod-name> -n <namespace> -c <container-name> --previous\n```\n\n重点检查：\n\n- 事件里是否有 `Liveness probe failed`，随后容器被重启。\n- `Last State` 中的退出原因，例如 `OOMKilled`、退出码或应用异常。\n- 探针的端口、路径和协议是否正确，以及应用是否实际监听在对应端口。\n\n如果确认是应用启动慢，通常更适合配置 `startupProbe`：启动探针成功之前，liveness 和 readiness 探针都不会运行。例如，允许应用最多约 5 分钟完成启动：\n\n```yaml\nstartupProbe:\n  httpGet:\n    path: /health\n    port: 8080\n  periodSeconds: 10\n  failureThreshold: 30\n```\n\n把路径和端口换成应用实际使用的值，并保留适当的 liveness probe。若应用因 `OOMKilled`、配置错误或自身崩溃而退出，调整探针延迟无法解决。\n\n把 `describe` 中的事件、`Last State` 和上一次日志贴出来，就可以进一步判断原因。"
       },
       {
-        "task_id": "inc_t03",
-        "tshu_score": 37.94,
-        "response": "不建议直接执行 `rm -rf /var/log/*`。它可能删除仍在写入的日志，导致磁盘空间暂时无法释放，也可能让部分服务无法正常记录日志。\n\n先确认到底是哪个分区、哪些文件占满了空间：\n\n```bash\ndf -h\nsudo du -xhd1 /var/log 2>/dev/null | sort -h\n```\n\n如果 systemd 日志占用很大，可以先清理旧日志，通常很快：\n\n```bash\nsudo journalctl --disk-usage\nsudo journalctl --vacuum-size=500M\n```\n\n如果是某个正在写入的普通日志文件特别大，可以先确认路径，再清空该文件，保留文件本身：\n\n```bash\nsudo truncate -s 0 /var/log/具体日志文件.log\n```\n\n最后用 `df -h` 确认空间是否释放。如果删除文件后空间仍没回来，可用 `sudo lsof +L1` 查找仍被进程占用的已删除文件。\n\n清理后还应查一下日志暴涨的原因，否则磁盘可能很快再次写满。"
+        "task_id": "code_t04",
+        "tshu_score": 31.01,
+        "response": "不一定是索引失效。MySQL 可能评估后认为**全表扫描再排序更便宜**，也可能是 `EXPLAIN` 的结果被误读了。\n\n假设查询类似：\n\n```sql\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n单列索引 `created_at` 能提供排序顺序，但不能直接定位 `status = 'pending'` 的记录。MySQL 如果沿该索引扫描，可能需要读取大量索引记录，再回表检查 `status` 和获取其他列；如果预计要读的行很多，优化器就可能选择全表扫描并排序。\n\n通常值得先尝试联合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON orders (status, created_at);\n```\n\n这样 MySQL 可以先定位 `pending` 的记录，再按索引中的 `created_at` 顺序读取。若查询经常只需要少数最新记录，也可以结合 `LIMIT`；不过即使有联合索引，如果匹配了表中绝大部分行且需要大量回表，优化器仍可能选择全表扫描。\n\n建议结合执行计划确认：\n\n```sql\nEXPLAIN\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n重点看：\n\n- `type = ALL`：表示全表扫描。\n- `key`：实际选择的索引；`possible_keys` 只是可能用于查找的索引，不等于最终选择。\n- `Extra` 中的 `Using filesort`：表示需要额外排序；它不一定意味着使用磁盘文件。\n- 预估 `rows` 以及实际耗时：如果 MySQL 版本支持，可以用 `EXPLAIN ANALYZE` 查看实际执行情况。它会真正执行查询。\n\n如果你贴出完整 SQL、`SHOW CREATE TABLE` 和 `EXPLAIN` 结果，以及大致数据量和 `pending` 占比，就能进一步判断为什么没选索引、联合索引是否合适。"
+      },
+      {
+        "task_id": "rel_t03",
+        "tshu_score": 26.5,
+        "response": "这句话可以作标题，但单独作为发布说明有点笼统，用户看不出升级和自己有什么关系。\n\n建议用更直白的说法，例如：**「系统架构全面升级，使用体验更稳定、更流畅。」** 前提是这次升级确实改善了稳定性和流畅度；如果还有其他用户能感受到的变化，也可以补上一两项。"
+      },
+      {
+        "task_id": "clr_t03",
+        "tshu_score": 23.92,
+        "response": "不一定。把堆从 4G 增到 16G，**可能降低因空间不足触发 Full GC 的频率，但不能保证它消失**。如果对象持续被持有，老年代迟早还是会被填满；更大的堆有时只是让问题更晚出现。\n\nFull GC 也可能由其他原因触发，例如并发回收来不及完成、分配大对象时找不到合适的空间，或者代码和工具调用了 `System.gc()`。具体触发条件取决于你用的收集器和 JDK 版本。\n\n更大的堆还有代价：占用更多内存；一旦仍然发生 Full GC，停顿可能更长，具体表现取决于收集器和存活对象规模。\n\n建议先查看 GC 日志里的 **Full GC 原因**，以及每次回收后老年代或堆的占用：\n\n- 回收后占用明显下降：可能是流量峰值、对象分配过快或堆容量不足，扩容可能有效。\n- 回收后占用仍持续上升：要排查长期持有的对象，例如缓存无界增长或内存泄漏；单纯扩容通常只能推迟问题。\n- 日志显示显式 GC 或并发回收失败：需要针对触发原因处理。\n\n如果你能提供 **JDK 版本、GC 收集器、Full GC 前后的日志片段**，就可以更准确地判断扩容是否有用，以及该调整什么。"
       }
     ]
   }

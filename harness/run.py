@@ -21,8 +21,9 @@ from loguru import logger
 
 from harness.models import Sample, Task
 from harness.score import load_tasks
+from harness.text import is_truncated
 
-THINK_BLOCK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
+THINK_BLOCK = re.compile(r"<(think|thinking|reasoning|analysis|thought)>.*?</\1>", re.S | re.I)
 
 
 def strip_think(text: str) -> tuple[str, int]:
@@ -66,12 +67,16 @@ async def call_once(
             if not text:
                 last_error = RuntimeError(f"空回复，finish_reason={choice.get('finish_reason')}")
                 continue
+            if choice.get("finish_reason") == "length" and is_truncated(text) and attempt < 2:
+                last_error = RuntimeError("正文被预算截断，加倍预算重试")
+                continue
             return Sample(
                 task_id=task.id,
                 model=model,
                 response=text,
                 think_chars=len(reasoning) + inline_chars,
                 latency_ms=round((time.perf_counter() - started) * 1000, 1),
+                thinking=reasoning,
             )
         except Exception as exc:  # noqa: BLE001 - 网络重试需要兜底
             last_error = exc
@@ -125,6 +130,7 @@ def write_jsonl(path: Path, samples: list[Sample]) -> None:
                 "response": s.response,
                 "think_chars": s.think_chars,
                 "latency_ms": s.latency_ms,
+                "thinking": s.thinking,
             },
             ensure_ascii=False,
         )
@@ -186,7 +192,7 @@ def main() -> None:
     parser.add_argument("--out-dir", default="runs")
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--temperature", type=float, default=0.3)
-    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--reasoning-effort", default="", help="low/medium/high，留空则不下发")
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--limit", type=int, default=0)

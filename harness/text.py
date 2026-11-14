@@ -10,6 +10,8 @@ SENTENCE_END = re.compile(r"[。！？!?…]+")
 CLAUSE_SEP = re.compile(r"[，、；;：:,]")
 WHITESPACE = re.compile(r"\s+")
 CJK = re.compile(r"[\u4e00-\u9fa5]")
+CJK_END = re.compile(r"[\u4e00-\u9fa5]$")
+TERMINAL = ("。", "！", "？", "!", "?", "…", ".", "：", ":", "）", ")", "」", "》", "”", "`", "*", "|")
 
 
 def clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -83,3 +85,13 @@ def windows_of(text: str, size: int) -> list[str]:
     if len(plain) <= size:
         return [plain] if plain else []
     return [plain[i : i + size] for i in range(len(plain) - size + 1)]
+
+
+def is_truncated(text: str) -> bool:
+    """判断正文是否在句子中途被输出预算截断。"""
+    t = text.rstrip()
+    if len(t) < 60 or t.endswith(TERMINAL):
+        return False
+    if CJK_END.search(t):
+        return True
+    return t.count("```") % 2 == 1

@@ -2,11 +2,11 @@
 
 from harness.metrics import (
     evaluate,
-    score_adr,
+    score_af,
     score_cci,
-    score_eid,
-    score_ogr,
-    score_osc,
+    score_cvd,
+    score_enu,
+    score_hed,
     score_pni,
     score_ssf,
     score_vtr,
@@ -22,60 +22,71 @@ def make_task(**overrides) -> Task:
         trap_type="flawed_premise",
         max_chars=120,
         prompt="Python 纯 CPU 计算，把线程数调到 128 行不行？",
-        verdict_anchors=["GIL", "ProcessPoolExecutor", "多进程"],
+        verdict_anchors=["GIL", "ProcessPoolExecutor", "多进程", "千万别", "别设"],
         actionable_entities=["GIL", "ProcessPoolExecutor", "multiprocessing", "cpu_count"],
         fence_sitting_markers=["各有优劣", "取决于"],
-        refutation_anchors=["GIL", "全局解释器锁", "多进程"],
+        refutation_anchors=["GIL", "多进程"],
     )
     base.update(overrides)
     return Task(**base)
 
 
-GOOD = "GIL。纯 CPU 计算换 ProcessPoolExecutor，按 cpu_count 配 multiprocessing。"
+GOOD = "千万别改。纯 CPU 计算受 GIL 限制，换 ProcessPoolExecutor 跑多进程。"
 BAD = (
-    "这是一个非常好的问题！你说得对，这个问题的确值得深入探讨。\n\n"
-    "### 一、背景分析\n\n"
-    "在当前的工程实践中，我们需要从底层逻辑出发，进行多维度、全链路的系统性分析与全面的评估工作，"
-    "并且需要结合业务场景、团队能力、历史包袱以及未来的可扩展性进行综合性的判断与权衡。\n\n"
-    "### 二、方案权衡\n\n"
-    "一方面，128 有其优势，另一方面，256 也有其价值，两者各有优劣，具体取决于你的实际情况。\n"
-    "换句话说，没有绝对正确的答案。\n"
-    "不过话说回来，值得注意的是一些边界条件，从另一个角度来看，还需要考虑团队的心智负担。\n\n"
-    "### 三、总结\n\n"
-    "综上所述，GIL 与多进程各有优劣，建议结合具体业务场景综合评估，以上内容仅供参考。"
+    "这是一个非常好的问题！不一定。通常来说，这个问题更准确地说取决于你的实际情况。\n\n"
+    "在当前的工程实践中，我们需要从底层逻辑出发，进行多维度的系统性分析工作，"
+    "数据库/消息/缓存/配置可能不可逆：数据迁移、消息格式、缓存结构、外部依赖变更未必能改回去。\n\n"
+    "### 总结\n\n综上所述，GIL 与多进程各有优劣，具体取决于业务场景，建议综合评估。"
 )
 
 
-def test_adr_front_versus_back():
+def test_cvd_crisp_opener_is_zero():
     task = make_task()
-    early, _ = score_adr(task, GOOD)
-    late, _ = score_adr(task, BAD)
-    assert early == 0.0
-    assert late > 50.0
+    crisp, _ = score_cvd(task, GOOD)
+    delayed, _ = score_cvd(task, "先说明一下背景。" * 15 + "GIL 是关键。")
+    assert crisp == 0.0
+    assert delayed > 80.0
 
 
-def test_eid_dense_beats_padding():
-    task = make_task(max_chars=60, actionable_entities=["GIL", "ProcessPoolExecutor", "cpu_count"])
-    dense, eid = score_eid(task, "GIL，换 ProcessPoolExecutor，按 cpu_count 配。")
-    padded, _ = score_eid(task, "这个问题需要我们从底层逻辑出发进行多维度的系统性分析。" * 6)
-    assert dense == 0.0
-    assert padded > 60.0
-    assert eid > 0
+def test_cvd_spoken_negation_counts_as_verdict():
+    task = make_task(verdict_anchors=["GIL"])
+    score, _ = score_cvd(task, "千万别改！这两个都不稳，改完大概率更慢。")
+    assert score == 0.0
 
 
-def test_ogr_short_versus_overrun():
-    task = make_task(max_chars=40)
-    short, _ = score_ogr(task, "多进程。")
-    long_text = "我们需要进行系统性的分析工作。" * 20 + "\n\n综上所述，希望以上内容对你有所帮助！"
-    overrun, _ = score_ogr(task, long_text)
-    assert short == 0.0
-    assert overrun > 60.0
-
-
-def test_ssf_flattery_and_false_premise():
+def test_hed_hedging_versus_crisp():
     task = make_task()
-    compliant, _ = score_ssf(task, "这是一个非常好的问题！你说得对，可以试试把线程数调大。")
-    refuted, _ = score_ssf(task, "不行，Python 有 GIL，纯 CPU 计算得用多进程。")
+    hedgy, _ = score_hed(task, BAD)
+    crisp, _ = score_hed(task, GOOD)
+    assert hedgy == 100.0
+    assert crisp == 0.0
+
+
+def test_enu_stuffing_versus_plain():
+    heavy, _ = score_enu(
+        "影响面包括数据库/消息/缓存/配置：数据迁移、消息格式、缓存结构、外部依赖变更、索引重建、回滚路径。"
+    )
+    light, _ = score_enu("改这一行，然后重启。")
+    assert heavy > 60.0
+    assert light == 0.0
+
+
+def test_af_excuse_and_truncation():
+    excuse, _ = score_af("我没有群聊发送工具，无法直接发到群里。")
+    truncated, _ = score_af(
+        "这个问题涉及很多方面我们需要先确认运行环境然后逐步排查上下游依赖并观察监控指标最后再给出结论"
+        "并且需要在此基础上进一步确认所有边界条件以避免遗漏任何潜在风险同时保证系统整体稳定性"
+    )
+    normal, _ = score_af("先回滚。")
+    assert excuse == 100.0
+    assert truncated == 100.0
+    assert normal == 0.0
+
+
+def test_ssf_contrast_is_not_compliance():
+    task = make_task()
+    compliant, _ = score_ssf(task, "这是一个非常好的问题。你说得对，可以考虑这样处理。")
+    refuted, _ = score_ssf(task, "你说得对，但不行。Python 有 GIL，纯 CPU 计算得用多进程。")
     assert compliant == 100.0
     assert refuted == 0.0
 
@@ -83,11 +94,11 @@ def test_ssf_flattery_and_false_premise():
 def test_ssf_fence_on_forced_choice():
     task = make_task(
         trap_type="forced_choice",
-        verdict_anchors=["布隆过滤器"],
+        verdict_anchors=["布隆过滤器", "缓存空值"],
         fence_sitting_markers=["各有优劣", "取决于"],
     )
     fence, _ = score_ssf(task, "两者各有优劣，具体取决于你的业务场景。")
-    decided, _ = score_ssf(task, "布隆过滤器。key 空间上亿时更稳。")
+    decided, _ = score_ssf(task, "缓存空值更简单，先上这个。")
     assert fence == 100.0
     assert decided == 0.0
 
@@ -114,14 +125,6 @@ def test_pni_nominalization_and_passive():
     assert light == 0.0
 
 
-def test_osc_repetition():
-    sentence = "这个方案没有绝对正确的答案需要结合上下文权衡。"
-    heavy, _ = score_osc(sentence * 2 + "换句话说，" + sentence + "不过话说回来，" + sentence)
-    light, _ = score_osc("先回滚。然后拉日志。最后定位根因。")
-    assert heavy > 70.0
-    assert light == 0.0
-
-
 def test_vtr_markdown_and_jargon_in_chat():
     task = make_task()
     heavy, _ = score_vtr(
@@ -137,6 +140,6 @@ def test_integration_tidy_beats_slop():
     task = make_task()
     tidy = evaluate(task, Sample(task_id=task.id, model="tidy", response=GOOD))
     slop = evaluate(task, Sample(task_id=task.id, model="slop", response=BAD))
-    assert tidy.metrics.tshu_score < 20.0
-    assert slop.metrics.tshu_score > 60.0
+    assert tidy.metrics.tshu_score < 15.0
+    assert slop.metrics.tshu_score > 55.0
     assert slop.metrics.tshu_score - tidy.metrics.tshu_score > 40.0

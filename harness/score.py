@@ -19,13 +19,13 @@ from harness.metrics import evaluate, opening_entropy
 from harness.models import WEIGHTS, ModelReport, Sample, ScoredSample, Task
 
 METRIC_LABELS = {
-    "adr": "ADR 首结论延迟",
-    "eid": "EID 信息密度稀释",
-    "ogr": "OGR 超额输出",
+    "cvd": "CVD 首句决断延迟",
+    "hed": "HED 防御性叠甲",
+    "enu": "ENU 报菜名堆砌",
     "ssf": "SSF 奉承与骑墙",
+    "af": "AF 回答失效",
     "cci": "CCI 句法负荷",
     "pni": "PNI 欧化名物化",
-    "osc": "OSC 推理空转",
     "vtr": "VTR 语言抽动",
 }
 
@@ -48,7 +48,6 @@ def load_tasks(path: str | Path) -> dict[str, Task]:
             actionable_entities=raw["actionable_entities"],
             fence_sitting_markers=raw.get("fence_sitting_markers", []),
             refutation_anchors=raw.get("refutation_anchors", []),
-            d_ref=raw.get("d_ref"),
         )
         tasks[task.id] = task
     return tasks
@@ -70,6 +69,7 @@ def load_samples(paths: list[str | Path]) -> dict[str, list[Sample]]:
                 response=raw["response"],
                 think_chars=raw.get("think_chars", 0),
                 latency_ms=raw.get("latency_ms", 0.0),
+                thinking=raw.get("thinking", ""),
             )
             grouped.setdefault(sample.model, []).append(sample)
     return grouped
