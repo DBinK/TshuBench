@@ -138,17 +138,27 @@ def score_model(
     )
 
 
+def primary_profile(metrics: dict[str, float], top_k: int = 2) -> str:
+    """提取模型得分最高的主导过对齐病灶画像（Scorecard 视角）。"""
+    active = [(k, v) for k, v in metrics.items() if v > 0.0]
+    if not active:
+        return "全维低病灶"
+    active.sort(key=lambda item: item[1], reverse=True)
+    return " · ".join(f"{METRIC_LABELS[k]}({v:.1f})" for k, v in active[:top_k])
+
+
 def render_markdown(reports: list[ModelReport]) -> str:
     ranked = sorted(reports, key=lambda r: r.tshu_score)
-    header = "| 排名 | 模型 | TshuScore (95% CI) | " + " | ".join(METRIC_LABELS.values()) + " |"
-    sep = "| ---: | --- | ---: | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
+    header = "| 排名 | 模型 | TshuScore (95% CI) | 主导病灶画像 | " + " | ".join(METRIC_LABELS.values()) + " |"
+    sep = "| ---: | --- | ---: | --- | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
     rows = [
-        "| {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {} |".format(
+        "| {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {} | {} |".format(
             i,
             r.model,
             r.tshu_score,
             r.ci_lower,
             r.ci_upper,
+            primary_profile(r.metrics),
             " | ".join(f"{r.metrics[k]:.1f}" for k in METRIC_LABELS),
         )
         for i, r in enumerate(ranked, start=1)
@@ -189,10 +199,12 @@ def render_html(reports: list[ModelReport]) -> str:
         cells = "".join(f"<td>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
         width = min(100.0, report.tshu_score)
         ci_text = f"<span class=ci>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
+        profile_text = html.escape(primary_profile(report.metrics))
         rows.append(
             f"<tr><td class=rank>{i}</td><td class=model>{html.escape(report.model)}</td>"
             f"<td class=score><span class=bar style='width:{width:.1f}%'></span>"
-            f"<b>{report.tshu_score:.1f}</b> {ci_text}</td>{cells}</tr>"
+            f"<b>{report.tshu_score:.1f}</b> {ci_text}</td>"
+            f"<td class=profile>{profile_text}</td>{cells}</tr>"
         )
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -218,13 +230,14 @@ td.score .bar{{position:absolute;left:0;top:50%;height:6px;transform:translateY(
 background:linear-gradient(90deg,var(--cool),var(--hot));opacity:.35;border-radius:3px}}
 td.score b{{position:relative}}
 td.score span.ci{{position:relative;color:var(--muted);font-size:11px;margin-left:4px}}
+td.profile{{text-align:left;color:var(--muted);font-size:12px}}
 footer{{color:var(--muted);margin-top:28px;font-size:12px}}
 </style>
 <main>
 <h1>TshuBench · 天书榜</h1>
 <p class=sub>量化后训练过对齐导致的可读性退化。分数越低越说人话，0 分对齐人类专家基线。</p>
 <table>
-<thead><tr><th>#</th><th>模型</th><th>TshuScore</th>{head}</tr></thead>
+<thead><tr><th>#</th><th>模型</th><th>TshuScore</th><th>主导病灶画像</th>{head}</tr></thead>
 <tbody>{''.join(rows)}</tbody>
 </table>
 <footer>生成于 {datetime.now():%Y-%m-%d %H:%M} · {len(ranked)} 个模型 · 纯 Python 确定性打分，无裁判模型</footer>

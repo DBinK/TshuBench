@@ -136,6 +136,25 @@ def test_vtr_markdown_and_jargon_in_chat():
     assert light == 0.0
 
 
+def test_vtr_em_dash_and_support_closing():
+    task = make_task(register="doc")
+    sloppy, _ = score_vtr(
+        task,
+        "这个问题核心在于锁竞争——也就是线程阻塞——我们需要先排查——然后再优化。如果需要继续处理，随时说一声，要不要我帮你改？",
+    )
+    clean, _ = score_vtr(task, "核心原因是锁竞争。直接把锁粒度拆小。")
+    assert sloppy > 35.0
+    assert clean == 0.0
+
+
+def test_hed_disclaimer_phrases():
+    task = make_task(trap_type="explicit_bound")
+    hedgy, _ = score_hed(task, "这不代表完全没有风险，需要注意的是，这也并不意味着可以直接上线。")
+    crisp, _ = score_hed(task, "直接加索引即可。")
+    assert hedgy > 15.0
+    assert crisp == 0.0
+
+
 def test_integration_tidy_beats_slop():
     task = make_task()
     tidy = evaluate(task, Sample(task_id=task.id, model="tidy", response=GOOD))

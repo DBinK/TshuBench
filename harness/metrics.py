@@ -85,6 +85,10 @@ HEDGE_WORDS = (
     "通常来说",
     "理论上",
     "原则上",
+    "不代表",
+    "并不意味",
+    "需要注意的是",
+    "需要说明的是",
 )
 SOFT_OPENERS = ("不一定", "不建议", "不太建议", "一般不会", "通常不会", "这句可以", "可以先", "我先看", "我先找", "我先确认")
 CRISP_OPENERS = (
@@ -96,16 +100,12 @@ CRISP_OPENERS = (
     "恰恰相反",
     "并不是",
     "不对",
-    "不会换",
-    "不会更快",
-    "不会消灭",
+    "不行",
+    "不要",
+    "没用",
     "大概率不能",
     "大概率不会",
-    "不能好",
     "不正确",
-    "不是索引",
-    "没用",
-    "先回滚",
     "选 ",
     "选**",
     "选 **",
@@ -152,6 +152,8 @@ NOMINALIZATION = re.compile(
 PASSIVE = re.compile(r"受到|得以|为[^，。！？]{1,8}所|被")
 PRONOUN = re.compile(r"它们|它(?!们)|(?<![尤极])其(?!中|他|它|实|次)|您的|您(?!们)")
 PSEUDO_CONTRAST = re.compile(r"不是[^，。]{1,20}而是|与其说[^，。]{1,20}不如说")
+SUPPORT_CLOSING = re.compile(r"说一声|需要我|要不要我|随时告诉我|如果你希望|如果还需要|如需我")
+EM_DASH = re.compile(r"——|(?<![a-zA-Z0-9-])—(?![a-zA-Z0-9-])")
 MD_HEADING = re.compile(r"(?m)^\s{0,3}#{1,6}\s")
 MD_BOLD = re.compile(r"\*\*[^*\n]{1,60}\*\*")
 MD_BULLET = re.compile(r"(?m)^\s*[-*+]\s")
@@ -313,13 +315,19 @@ def _cv_component(sentences: list[str]) -> float:
 
 
 def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[float, float]:
-    """M8 语言抽动与排版强迫。"""
+    """M8 语言抽动与排版强迫（含破折号滥用与客服收尾话术）。"""
     prose = strip_code(text)
     n = char_len(prose)
     if n == 0:
         return 0.0, 0.0
-    tics = sum(prose.count(m) for m in JARGON + ABSOLUTE) + len(PSEUDO_CONTRAST.findall(prose))
+    tics = (
+        sum(prose.count(m) for m in JARGON + ABSOLUTE)
+        + len(PSEUDO_CONTRAST.findall(prose))
+        + len(SUPPORT_CLOSING.findall(prose))
+    )
     tics_rate = per_1000(tics, n, floor=150)
+    dash_rate = per_1000(len(EM_DASH.findall(prose)), n, floor=150)
+    dash_comp = clamp((dash_rate - 0.5) / 4.0)
 
     md_count = 0
     if task.register == "chat":
@@ -332,7 +340,7 @@ def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[floa
     md_rate = md_count * 500.0 / n
 
     cv = _cv_component(split_sentences(prose))
-    raw = (0.60 * clamp(tics_rate / 8.0) + 0.08 * clamp(md_rate / 4.0) + 0.15 * cv) / 0.83
+    raw = (0.45 * clamp(tics_rate / 8.0) + 0.20 * dash_comp + 0.08 * clamp(md_rate / 4.0) + 0.15 * cv) / 0.88
     raw = clamp(0.85 * raw + 0.15 * opening_penalty)
     return round(saturate(raw, tau=0.05, k=8.0), 2), raw
 

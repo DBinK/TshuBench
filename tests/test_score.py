@@ -1,4 +1,12 @@
-from harness.score import compute_bootstrap_ci
+from harness.score import compute_bootstrap_ci, primary_profile
+
+
+def test_primary_profile_picks_top_metrics():
+    metrics = {"cvd": 12.0, "hed": 25.5, "enu": 30.1, "ssf": 0.0, "af": 0.0, "cci": 1.0, "pni": 0.0, "vtr": 5.0}
+    profile = primary_profile(metrics)
+    assert "ENU 报菜名堆砌(30.1)" in profile
+    assert "HED 防御性叠甲(25.5)" in profile
+    assert "CVD" not in profile
 
 
 def test_bootstrap_ci_single_value():
