@@ -120,6 +120,14 @@ def score_model(
     averages = {
         key: round(mean(getattr(s.metrics, key) for s in scored), 2) for key in WEIGHTS
     }
+    open_s = round(averages["cvd"] * WEIGHTS["cvd"] + averages["hed"] * WEIGHTS["hed"], 2)
+    body_s = round(
+        averages["enu"] * WEIGHTS["enu"]
+        + averages["cci"] * WEIGHTS["cci"]
+        + averages["pni"] * WEIGHTS["pni"]
+        + averages["vtr"] * WEIGHTS["vtr"],
+        2,
+    )
     ts = round(sum(averages[k] * w for k, w in WEIGHTS.items()), 2)
     worst = sorted(scored, key=lambda s: s.metrics.tshu_score, reverse=True)[:5]
 
@@ -135,6 +143,8 @@ def score_model(
         worst=worst,
         ci_lower=ci_lower,
         ci_upper=ci_upper,
+        open_score=open_s,
+        body_score=body_s,
         tier=classify_tier(ts),
         reasoning_effort=effort,
     )
@@ -152,13 +162,13 @@ def primary_profile(metrics: dict[str, float], top_k: int = 2) -> str:
 def render_markdown(reports: list[ModelReport]) -> str:
     ranked = sorted(reports, key=lambda r: r.tshu_score)
     header = (
-        "| 排名 | 模型 | 思考档位 | 梯队 | TshuScore (95% CI) | 主导病灶画像 | "
+        "| 排名 | 模型 | 思考档位 | 梯队 | TshuScore (95% CI) | 开口扣分 | 正文扣分 | 主导病灶画像 | "
         + " | ".join(METRIC_LABELS.values())
         + " |"
     )
-    sep = "| ---: | --- | :---: | --- | ---: | --- | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
+    sep = "| ---: | --- | :---: | --- | ---: | ---: | ---: | --- | " + " | ".join("---:" for _ in METRIC_LABELS) + " |"
     rows = [
-        "| {} | {} | {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {} | {} |".format(
+        "| {} | {} | {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {:.2f} | {:.2f} | {} | {} |".format(
             i,
             r.model,
             r.reasoning_effort or "默认",
@@ -166,6 +176,8 @@ def render_markdown(reports: list[ModelReport]) -> str:
             r.tshu_score,
             r.ci_lower,
             r.ci_upper,
+            r.open_score,
+            r.body_score,
             primary_profile(r.metrics),
             " | ".join(f"{r.metrics[k]:.1f}" for k in METRIC_LABELS),
         )
@@ -176,7 +188,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
         "",
         f"生成时间：{datetime.now():%Y-%m-%d %H:%M}",
         "",
-        "分数越低越少见这六类文风病灶，0 分仅表示未检出预设惩罚模式（不代表事实正确或回答完整）。当前榜单基于 36 道日常工程高频题进行探索性风格观察，梯队按点估计划定，[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间，区间重叠的模型之间不应解读为稳定名次差异。",
+        "分数越低越少见这六类文风病灶，0 分仅表示未检出预设惩罚模式（不代表事实正确或回答完整）。V2.1 权重按「开口痛快度 26%（CVD 12% + HED 14%）+ 正文阅读负担 74%（ENU 22% + CCI 22% + PNI 14% + VTR 16%）」拆分；梯队按点估计划定，[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间，区间重叠的模型之间不应解读为稳定名次差异。",
         "",
         header,
         sep,
@@ -191,6 +203,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
             f"- 思考档位：{report.reasoning_effort or '默认'}",
             f"- 梯队：{report.tier or classify_tier(report.tshu_score)}",
             f"- TshuScore：{report.tshu_score:.2f} (95% CI: [{report.ci_lower:.2f}, {report.ci_upper:.2f}])",
+            f"- 开口扣分：{report.open_score:.2f} ｜ 正文扣分：{report.body_score:.2f}",
             f"- 首句熵：{report.opening_entropy}",
         ]
         if report.worst:
@@ -217,6 +230,7 @@ def render_html(reports: list[ModelReport]) -> str:
             f"<td class=effort>{effort_text}</td><td class=tier>{tier_text}</td>"
             f"<td class=score><span class=bar style='width:{width:.1f}%'></span>"
             f"<b>{report.tshu_score:.1f}</b> {ci_text}</td>"
+            f"<td>{report.open_score:.2f}</td><td>{report.body_score:.2f}</td>"
             f"<td class=profile>{profile_text}</td>{cells}</tr>"
         )
     return f"""<!doctype html>
@@ -251,9 +265,9 @@ footer{{color:var(--muted);margin-top:28px;font-size:12px}}
 </style>
 <main>
 <h1>TshuBench · 天书榜</h1>
-<p class=sub>中文工程回答的文风病灶观察榜。分数越低越少见黑话、套话与结构膨胀，0 分表示未检出六类预设惩罚（不代表知识正确）。基于 36 道日常工程题，梯队为点估计分档，CI 重叠区间请结合病灶画像判断。</p>
+<p class=sub>中文工程回答的文风病灶观察榜。分数越低越少见黑话、套话与结构膨胀，0 分表示未检出六类预设惩罚（不代表知识正确）。基于 36 道日常工程题（V2.1 权重：开口痛快度 26% + 正文阅读负担 74%），梯队为点估计分档，CI 重叠区间请结合病灶画像判断。</p>
 <table>
-<thead><tr><th>#</th><th>模型</th><th>思考档位</th><th>梯队</th><th>TshuScore</th><th>主导病灶画像</th>{head}</tr></thead>
+<thead><tr><th>#</th><th>模型</th><th>思考档位</th><th>梯队</th><th>TshuScore</th><th>开口扣分</th><th>正文扣分</th><th>主导病灶画像</th>{head}</tr></thead>
 <tbody>{''.join(rows)}</tbody>
 </table>
 <footer>生成于 {datetime.now():%Y-%m-%d %H:%M} · {len(ranked)} 个模型 · 确定性 AST + jieba 词法打分，无裁判模型</footer>
@@ -284,6 +298,8 @@ def run_scoring(
             "tier": r.tier or classify_tier(r.tshu_score),
             "n_samples": r.n_samples,
             "tshu_score": r.tshu_score,
+            "open_score": r.open_score,
+            "body_score": r.body_score,
             "ci_lower": r.ci_lower,
             "ci_upper": r.ci_upper,
             "opening_entropy": r.opening_entropy,

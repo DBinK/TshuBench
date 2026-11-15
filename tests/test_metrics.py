@@ -245,3 +245,27 @@ def test_vtr_exempts_quoted_prompt_jargon():
     task = make_task(prompt="发布说明写「全面升级系统架构，赋能业务增长」行不行？")
     score, _ = score_vtr(task, "千万别这么写。用户看不懂赋能业务增长这种空话。")
     assert score == 0.0
+
+
+def test_cvd_allows_first_paragraph_diagnosis_without_cliff():
+    task = make_task(
+        prompt="`cargo test` 时好时坏怎么办？",
+        verdict_anchors=["nextest", "隔离"],
+        actionable_entities=["cargo test", "Serial"],
+    )
+    ans = "`cargo test` 默认采用**多线程并发**执行同一个测试二进制文件中的所有测试用例，因此端口与环境变量会互相干扰。"
+    assert score_cvd(task, ans)[0] == 0.0
+
+
+def test_vtr_penalizes_sprawl_sections_and_excess_code_blocks():
+    task = make_task()
+    concise = "直接设置 `-e TZ=Asia/Shanghai` 即可生效。\n\n```bash\ndocker run -e TZ=Asia/Shanghai app\n```"
+    sprawl = (
+        "先设环境变量。\n\n"
+        "## 方法一\n```bash\ndocker run -e TZ=Asia/Shanghai app\n```\n"
+        "## 方法二\n```yaml\nenvironment:\n  - TZ=Asia/Shanghai\n```\n"
+        "## 方法三\n```dockerfile\nENV TZ=Asia/Shanghai\n```\n"
+        "## 常见坑与不推荐的做法\n这里补充说明各种例外情况和注意事项。\n"
+        "```go\nimport _ \"time/tzdata\"\n```\n"
+    )
+    assert score_vtr(task, sprawl)[0] > score_vtr(task, concise)[0] + 5.0

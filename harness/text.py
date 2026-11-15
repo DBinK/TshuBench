@@ -38,6 +38,7 @@ class MarkdownAnalysis(NamedTuple):
     table_rows: int
     hr_count: int
     last_block_type: str
+    code_blocks: int = 0
 
 
 _BLOCK_OPEN_LABELS = {
@@ -53,7 +54,7 @@ _BLOCK_OPEN_LABELS = {
 def analyze_markdown(text: str) -> MarkdownAnalysis:
     """用 markdown-it-py 提取纯文本与结构计数，避免正则误伤代码块。"""
     if not text:
-        return MarkdownAnalysis("", 0, 0, 0, "")
+        return MarkdownAnalysis("", 0, 0, 0, "", 0)
 
     tokens = _MD.parse(text)
     code_ranges: list[tuple[int, int]] = []
@@ -94,6 +95,7 @@ def analyze_markdown(text: str) -> MarkdownAnalysis:
         table_rows=table_rows,
         hr_count=hr_count,
         last_block_type=last_block_type,
+        code_blocks=len(code_ranges),
     )
 
 

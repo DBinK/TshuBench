@@ -118,6 +118,24 @@ CRISP_OPENERS = (
     "别设",
     "别直接",
     "先别",
+    "这不算",
+    "不算",
+    "不成立",
+    "有几个坑",
+    "存在几个",
+    "有几个比较",
+    "有几个地方",
+    "本质原因是",
+    "根本原因在于",
+    "核心原因是",
+    "根源一样",
+    "多线程并发",
+    "最省事",
+    "这里提供",
+    "这里为你",
+    "这里为您",
+    "直接回答",
+    "简短的回答",
 )
 
 JARGON = (
@@ -172,6 +190,9 @@ PASSIVE_PHRASE = re.compile(r"受到|得以|为[^，。！？]{1,8}所")
 PRONOUN = re.compile(r"它们|它(?!们)|(?<![尤极])其(?!中|他|它|实|次)|您的|您(?!们)")
 PSEUDO_CONTRAST = re.compile(r"不是[^，。]{1,20}而是|与其说[^，。]{1,20}不如说")
 SUPPORT_CLOSING = re.compile(r"说一声|需要我|要不要我|随时告诉我|如果你希望|如果还需要|如需我")
+SPRAWL_SECTION_RE = re.compile(
+    r"常见坑|不推荐的做法|不推荐|例外情况|什么时候不需要|何时不需要|如果不想|顺便提|注意事项|坑点|补充说明"
+)
 EM_DASH = re.compile(r"——|(?<![a-zA-Z0-9-])—(?![a-zA-Z0-9-])")
 PATH_OR_RATIO = re.compile(r"(?<![A-Za-z0-9\u4e00-\u9fff])(?:/[A-Za-z0-9_.*-]+)+/?|\b\d+/\d+\b")
 INLINE_CODE_RE = re.compile(r"`[^`\n]{1,80}`")
@@ -208,20 +229,20 @@ def _first_index(text: str, anchors: list[str]) -> int | None:
 
 
 def score_cvd(task: Task, text: str) -> tuple[float, float]:
-    """M1 首句决断延迟：按绝对字符偏移，口语强表态直接零惩罚。"""
+    """M1 首句决断延迟：按首段字符偏移与直判句式打分。"""
     if not text:
         return 100.0, 200.0
-    head = text.lstrip("#* \t\r\n")[:35]
+    head = text.lstrip("#* \t\r\n")[:70]
     if any(opener in head for opener in CRISP_OPENERS):
         return 0.0, 0.0
     idx = _first_index(text, task.answer_anchors)
     if idx is not None:
-        if idx <= 20:
+        if idx <= 30:
             return 0.0, float(idx)
-        return min(100.0, (idx - 20) / 120.0 * 100.0), float(idx)
-    ent_idx = _first_index(text[:80], task.actionable_entities)
+        return min(100.0, (idx - 30) / 110.0 * 100.0), float(idx)
+    ent_idx = _first_index(text[:120], task.actionable_entities)
     if ent_idx is not None:
-        return min(35.0, max(0.0, (ent_idx - 10) / 120.0 * 100.0)), float(ent_idx)
+        return min(35.0, max(0.0, (ent_idx - 15) / 110.0 * 100.0)), float(ent_idx)
     return 100.0, 200.0
 
 
@@ -371,6 +392,7 @@ def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[floa
         sum(prose.count(m) for m in active_jargon + ABSOLUTE)
         + len(PSEUDO_CONTRAST.findall(prose))
         + len(SUPPORT_CLOSING.findall(prose))
+        + len(SPRAWL_SECTION_RE.findall(prose))
     )
     tics_rate = per_1000(tics, n, floor=150)
     dash_rate = per_1000(len(EM_DASH.findall(prose)), n, floor=150)
@@ -378,9 +400,10 @@ def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[floa
 
     md_count = 0.0
     if task.register == "chat":
-        excess_headings = max(0, md.headings - n // 160)
-        excess_hr = max(0, md.hr_count - 2)
-        md_count = md.table_rows * 2.5 + excess_headings * 0.8 + excess_hr * 0.5
+        excess_headings = max(0, md.headings - max(2, n // 240))
+        excess_hr = max(0, md.hr_count - 1)
+        excess_code = max(0, md.code_blocks - 2)
+        md_count = md.table_rows * 2.5 + excess_headings * 1.0 + excess_hr * 0.6 + excess_code * 1.5
     md_rate = md_count * 500.0 / n
 
     cv = _cv_component(split_sentences(prose))

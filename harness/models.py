@@ -5,12 +5,12 @@ import warnings
 from pydantic import BaseModel, ConfigDict, Field
 
 WEIGHTS = {
-    "cvd": 0.16,
-    "hed": 0.22,
-    "enu": 0.18,
+    "cvd": 0.12,
+    "hed": 0.14,
+    "enu": 0.22,
     "cci": 0.22,
-    "pni": 0.10,
-    "vtr": 0.12,
+    "pni": 0.14,
+    "vtr": 0.16,
 }
 
 
@@ -91,6 +91,20 @@ class MetricScores(BaseModel):
         }
 
     @property
+    def open_score(self) -> float:
+        return round(self.cvd * WEIGHTS["cvd"] + self.hed * WEIGHTS["hed"], 2)
+
+    @property
+    def body_score(self) -> float:
+        return round(
+            self.enu * WEIGHTS["enu"]
+            + self.cci * WEIGHTS["cci"]
+            + self.pni * WEIGHTS["pni"]
+            + self.vtr * WEIGHTS["vtr"],
+            2,
+        )
+
+    @property
     def tshu_score(self) -> float:
         return round(sum(self.as_dict()[k] * w for k, w in WEIGHTS.items()), 2)
 
@@ -117,5 +131,7 @@ class ModelReport(BaseModel):
     worst: list[ScoredSample] = Field(default_factory=list)
     ci_lower: float = 0.0
     ci_upper: float = 0.0
+    open_score: float = 0.0
+    body_score: float = 0.0
     tier: str = ""
     reasoning_effort: str = ""
