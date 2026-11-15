@@ -176,7 +176,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
         "",
         f"生成时间：{datetime.now():%Y-%m-%d %H:%M}",
         "",
-        "分数越低越说人话，0 分对齐人类专家基线。当前榜单基于 24 道高区分度探针题（Calibration Set）进行探索性压力评测，[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间。置信区间明显重叠的模型之间不应解读为统计显著分差，建议结合所属梯队与病灶画像综合判断。",
+        "分数越低越少见这六类文风病灶，0 分仅表示未检出预设惩罚模式（不代表事实正确或回答完整）。当前榜单基于 36 道日常工程高频题进行探索性风格观察，梯队按点估计划定，[下限, 上限] 为 1000 次 Bootstrap 抽样估计的 95% 置信区间，区间重叠的模型之间不应解读为稳定名次差异。",
         "",
         header,
         sep,
@@ -251,7 +251,7 @@ footer{{color:var(--muted);margin-top:28px;font-size:12px}}
 </style>
 <main>
 <h1>TshuBench · 天书榜</h1>
-<p class=sub>量化后训练过对齐导致的可读性退化。分数越低越说人话，0 分对齐人类专家基线。基于 24 题探索性校准集，CI 重叠区间请结合梯队与画像判断。</p>
+<p class=sub>中文工程回答的文风病灶观察榜。分数越低越少见黑话、套话与结构膨胀，0 分表示未检出六类预设惩罚（不代表知识正确）。基于 36 道日常工程题，梯队为点估计分档，CI 重叠区间请结合病灶画像判断。</p>
 <table>
 <thead><tr><th>#</th><th>模型</th><th>思考档位</th><th>梯队</th><th>TshuScore</th><th>主导病灶画像</th>{head}</tr></thead>
 <tbody>{''.join(rows)}</tbody>

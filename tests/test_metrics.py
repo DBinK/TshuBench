@@ -175,7 +175,37 @@ def test_hed_double_negation_and_early_anchor():
     evasive, _ = score_hed(task, "这个参数值需要依据机器负载综合判断，推荐逐步压测看效果。")
     assert double_neg == 0.0
     assert early_anchor == 0.0
-    assert evasive == 15.0
+    assert evasive == 10.0
+
+
+def test_hed_tone_invariance_bu_jianyi_vs_qianwan_bie():
+    task = make_task(
+        prompt="线上磁盘满了，能直接 rm 删大日志文件吗？",
+        verdict_anchors=["千万别", "不要直接删", "lsof", "truncate"],
+        actionable_entities=["df", "lsof", "truncate"],
+    )
+    soft_tone = "不建议直接删。先用 df -h 确认空间占用，再用 lsof 检查仍被进程占用的日志。"
+    hard_tone = "千万别直接删。先用 df -h 确认空间占用，再用 lsof 检查仍被进程占用的日志。"
+    assert score_hed(task, soft_tone)[0] == score_hed(task, hard_tone)[0] == 0.0
+    assert score_cvd(task, soft_tone)[0] == score_cvd(task, hard_tone)[0] == 0.0
+
+
+def test_cvd_synonym_and_quoted_anchor_not_max_penalized():
+    text = "先把对数据新鲜度有要求的读请求切到主库，同时确认主库容量和当前负载。"
+    with_anchor = make_task(
+        trap_type="forced_choice",
+        verdict_anchors=["切到主库", "主库读取"],
+        actionable_entities=["主库", "SELECT"],
+    )
+    without_synonym = make_task(
+        trap_type="forced_choice",
+        verdict_anchors=["切回主库", "强一致读"],
+        actionable_entities=["主库", "SELECT"],
+    )
+    quoted_task = make_task(trap_type="forced_choice", verdict_anchors=["索引失效"])
+    assert score_cvd(with_anchor, text)[0] == 0.0
+    assert score_cvd(without_synonym, text)[0] <= 15.0
+    assert score_cvd(quoted_task, "不是索引“失效”了，是索引建错了。")[0] == 0.0
 
 
 def test_pni_ignores_non_passive_bei():

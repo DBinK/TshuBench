@@ -61,6 +61,11 @@ class Sample(BaseModel):
     latency_ms: float = 0.0
     thinking: str = ""
     reasoning_effort: str = ""
+    temperature: float = 0.3
+    max_tokens: int = 8192
+    suite_hash: str = ""
+    sampled_at: str = ""
+    response_model: str = ""
 
 
 class MetricScores(BaseModel):

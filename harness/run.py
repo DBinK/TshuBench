@@ -10,10 +10,12 @@
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -24,6 +26,13 @@ from harness.score import load_tasks
 from harness.text import is_truncated
 
 THINK_BLOCK = re.compile(r"<(think|thinking|reasoning|analysis|thought)>.*?</\1>", re.S | re.I)
+
+
+def _suite_hash(path: str | Path) -> str:
+    target = Path(path)
+    if not target.exists():
+        return ""
+    return hashlib.sha256(target.read_bytes()).hexdigest()[:12]
 
 
 def strip_think(text: str) -> tuple[str, int]:
@@ -40,34 +49,46 @@ async def call_once(
     temperature: float,
     max_tokens: int,
     reasoning_effort: str = "",
+    suite_hash: str = "",
+    sampled_at: str = "",
 ) -> Sample:
+    effective_effort = reasoning_effort if reasoning_effort and reasoning_effort != "默认" else ""
+    resolved_effort = reasoning_effort or "默认"
+    resolved_date = sampled_at or datetime.now().strftime("%Y-%m-%d")
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": task.prompt}],
         "temperature": temperature,
     }
-    if reasoning_effort:
-        payload["reasoning_effort"] = reasoning_effort
+    if effective_effort:
+        payload["reasoning_effort"] = effective_effort
     started = time.perf_counter()
     last_error: Exception | None = None
-    for attempt in range(3):
+    trunc_retries = 0
+    for attempt in range(6):
         try:
-            payload["max_tokens"] = max_tokens * (2**attempt)
+            current_budget = max_tokens * (2**trunc_retries)
+            payload["max_tokens"] = current_budget
             resp = await client.post(
                 f"{base_url.rstrip('/')}/chat/completions",
                 json=payload,
                 headers={"Authorization": f"Bearer {api_key}"},
             )
             resp.raise_for_status()
-            choice = resp.json()["choices"][0]
+            resp_data = resp.json()
+            choice = resp_data["choices"][0]
+            resp_model = str(resp_data.get("model") or "")
             message = choice.get("message") or {}
             content = message.get("content") or ""
             reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
             text, inline_chars = strip_think(content)
             if not text:
                 last_error = RuntimeError(f"空回复，finish_reason={choice.get('finish_reason')}")
+                if attempt >= 2:
+                    break
                 continue
-            if choice.get("finish_reason") == "length" and is_truncated(text) and attempt < 2:
+            if choice.get("finish_reason") == "length" and is_truncated(text) and trunc_retries < 2:
+                trunc_retries += 1
                 last_error = RuntimeError("正文被预算截断，加倍预算重试")
                 continue
             return Sample(
@@ -77,13 +98,43 @@ async def call_once(
                 think_chars=len(reasoning) + inline_chars,
                 latency_ms=round((time.perf_counter() - started) * 1000, 1),
                 thinking=reasoning,
-                reasoning_effort=reasoning_effort,
+                reasoning_effort=resolved_effort,
+                temperature=temperature,
+                max_tokens=current_budget,
+                suite_hash=suite_hash,
+                sampled_at=resolved_date,
+                response_model=resp_model,
             )
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            if exc.response.status_code == 429:
+                retry_after = exc.response.headers.get("retry-after", "")
+                delay = (
+                    float(retry_after)
+                    if retry_after.replace(".", "", 1).isdigit()
+                    else min(45.0, 10.0 * (attempt + 1))
+                )
+                await asyncio.sleep(delay)
+                continue
+            if attempt >= 2:
+                break
+            await asyncio.sleep(2**attempt)
         except Exception as exc:  # noqa: BLE001 - 网络重试需要兜底
             last_error = exc
+            if attempt >= 2:
+                break
             await asyncio.sleep(2**attempt)
     logger.error(f"{task.id} 调用失败：{last_error}")
-    return Sample(task_id=task.id, model=model, response="", reasoning_effort=reasoning_effort)
+    return Sample(
+        task_id=task.id,
+        model=model,
+        response="",
+        reasoning_effort=resolved_effort,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        suite_hash=suite_hash,
+        sampled_at=resolved_date,
+    )
 
 
 def tidy_response(task: Task) -> str:
@@ -123,28 +174,33 @@ def slop_response(task: Task) -> str:
 
 def write_jsonl(path: Path, samples: list[Sample]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        json.dumps(
-            {
-                "task_id": s.task_id,
-                "model": s.model,
-                "response": s.response,
-                "think_chars": s.think_chars,
-                "latency_ms": s.latency_ms,
-                "thinking": s.thinking,
-                "reasoning_effort": s.reasoning_effort,
-            },
-            ensure_ascii=False,
-        )
-        for s in samples
-    ]
+    lines = [json.dumps(s.model_dump(), ensure_ascii=False) for s in samples]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     logger.success(f"写出 {len(samples)} 条 -> {path}")
 
 
 def run_demo(tasks: dict[str, Task], prefix: str) -> None:
-    tidy = [Sample(task_id=t, model="demo-tidy", response=tidy_response(task)) for t, task in tasks.items()]
-    slop = [Sample(task_id=t, model="demo-slop", response=slop_response(task)) for t, task in tasks.items()]
+    sampled_at = datetime.now().strftime("%Y-%m-%d")
+    tidy = [
+        Sample(
+            task_id=t,
+            model="demo-tidy",
+            response=tidy_response(task),
+            reasoning_effort="默认",
+            sampled_at=sampled_at,
+        )
+        for t, task in tasks.items()
+    ]
+    slop = [
+        Sample(
+            task_id=t,
+            model="demo-slop",
+            response=slop_response(task),
+            reasoning_effort="默认",
+            sampled_at=sampled_at,
+        )
+        for t, task in tasks.items()
+    ]
     base = Path(prefix)
     write_jsonl(base.with_name(base.name + "_tidy.jsonl"), tidy)
     write_jsonl(base.with_name(base.name + "_slop.jsonl"), slop)
@@ -163,6 +219,8 @@ async def execute_live(
     reasoning_effort: str = "",
     timeout: float = 180.0,
     limit: int = 0,
+    suite_hash: str = "",
+    sampled_at: str = "",
 ) -> None:
     """并发采样指定模型并将结果写入 JSONL。"""
     api_key = os.environ.get(api_key_env, "")
@@ -170,6 +228,7 @@ async def execute_live(
         raise SystemExit(f"环境变量 {api_key_env} 为空")
     semaphore = asyncio.Semaphore(concurrency)
     selected = list(tasks.values())[:limit] if limit else list(tasks.values())
+    resolved_date = sampled_at or datetime.now().strftime("%Y-%m-%d")
 
     async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
         async def worker(task: Task) -> Sample:
@@ -183,6 +242,8 @@ async def execute_live(
                     temperature,
                     max_tokens,
                     reasoning_effort,
+                    suite_hash=suite_hash,
+                    sampled_at=resolved_date,
                 )
 
         samples = await asyncio.gather(*(worker(t) for t in selected))
@@ -209,7 +270,9 @@ def execute_models(
 ) -> list[Path]:
     """按模型配置顺序完成采样，返回写出的 JSONL 路径列表。"""
     tasks = load_tasks(tasks_path)
-    logger.info(f"载入 {len(tasks)} 道题")
+    suite_hash = _suite_hash(tasks_path)
+    sampled_at = datetime.now().strftime("%Y-%m-%d")
+    logger.info(f"载入 {len(tasks)} 道题 (hash={suite_hash})")
     out_base = Path(out_dir)
     written: list[Path] = []
     for spec in models:
@@ -230,6 +293,8 @@ def execute_models(
                 reasoning_effort=eff,
                 timeout=timeout,
                 limit=limit,
+                suite_hash=suite_hash,
+                sampled_at=sampled_at,
             )
         )
         written.append(target)
@@ -268,7 +333,9 @@ def main() -> None:
     specs = args.models or [args.model]
     if not args.models and args.out != "runs/model.jsonl":
         tasks = load_tasks(args.tasks)
-        logger.info(f"载入 {len(tasks)} 道题")
+        suite_hash = _suite_hash(args.tasks)
+        sampled_at = datetime.now().strftime("%Y-%m-%d")
+        logger.info(f"载入 {len(tasks)} 道题 (hash={suite_hash})")
         model, _, effort = args.model.partition(":")
         eff = effort or args.reasoning_effort
         logger.info(f"开始 {model}，思考档位 {eff or '默认'}")
@@ -285,6 +352,8 @@ def main() -> None:
                 reasoning_effort=eff,
                 timeout=args.timeout,
                 limit=args.limit,
+                suite_hash=suite_hash,
+                sampled_at=sampled_at,
             )
         )
         return

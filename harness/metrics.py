@@ -35,8 +35,6 @@ from harness.text import (
 
 HEDGE_WORDS = (
     "不一定",
-    "不建议",
-    "不太建议",
     "一般不会",
     "通常不会",
     "更准确地说",
@@ -60,12 +58,9 @@ HEDGE_WORDS = (
     "需要说明的是",
 )
 HEDGE_RE = re.compile(
-    "|".join(
-        r"(?<!非常)(?<!强烈)(?<!绝)(?<!绝对)(?<!都)(?<!均)不建议" if w == "不建议" else re.escape(w)
-        for w in sorted(HEDGE_WORDS, key=len, reverse=True)
-    )
+    "|".join(re.escape(w) for w in sorted(HEDGE_WORDS, key=len, reverse=True))
 )
-SOFT_OPENERS = ("不一定", "不建议", "不太建议", "一般不会", "通常不会", "这句可以", "可以先", "我先看", "我先找", "我先确认")
+SOFT_OPENERS = ("不一定", "一般不会", "通常不会", "这句可以", "可以先", "我先看", "我先找", "我先确认")
 CRISP_OPENERS = (
     "千万别",
     "千万不要",
@@ -76,9 +71,20 @@ CRISP_OPENERS = (
     "绝对不建议",
     "都不建议",
     "均不建议",
+    "不建议",
+    "不太建议",
+    "不合理",
+    "不太合理",
+    "没必要",
+    "没有必要",
+    "不需要",
+    "不太行",
     "都不行",
     "都不可行",
     "都不要",
+    "不能",
+    "不会",
+    "不是",
     "完全没用",
     "不仅不会",
     "恰恰相反",
@@ -92,6 +98,20 @@ CRISP_OPENERS = (
     "大概率不能",
     "大概率不会",
     "不正确",
+    "先说结论",
+    "结论：",
+    "结论是",
+    "直接说结论",
+    "简短回答",
+    "一句话",
+    "先止血",
+    "先止损",
+    "先回滚",
+    "先切",
+    "立刻",
+    "立即",
+    "拆成两个",
+    "拆开",
     "选 ",
     "选**",
     "选 **",
@@ -169,10 +189,21 @@ BARE_REF_RE = re.compile(
 )
 
 
+_QUOTE_RE = re.compile(r"[“”\"'‘’「」『』《》*]")
+
+
 def _first_index(text: str, anchors: list[str]) -> int | None:
     lowered = text.lower()
-    positions = [lowered.find(a.lower()) for a in anchors if a]
-    positions = [p for p in positions if p >= 0]
+    normalized = _QUOTE_RE.sub("", lowered)
+    positions: list[int] = []
+    for a in anchors:
+        if not a:
+            continue
+        la = a.lower()
+        na = _QUOTE_RE.sub("", la)
+        for candidate in (lowered.find(la), normalized.find(na)):
+            if candidate >= 0:
+                positions.append(candidate)
     return min(positions) if positions else None
 
 
@@ -180,14 +211,18 @@ def score_cvd(task: Task, text: str) -> tuple[float, float]:
     """M1 首句决断延迟：按绝对字符偏移，口语强表态直接零惩罚。"""
     if not text:
         return 100.0, 200.0
-    if any(opener in text[:20] for opener in CRISP_OPENERS):
+    head = text.lstrip("#* \t\r\n")[:35]
+    if any(opener in head for opener in CRISP_OPENERS):
         return 0.0, 0.0
     idx = _first_index(text, task.answer_anchors)
-    if idx is None:
-        return 100.0, 200.0
-    if idx <= 15:
-        return 0.0, float(idx)
-    return min(100.0, (idx - 15) / 120.0 * 100.0), float(idx)
+    if idx is not None:
+        if idx <= 20:
+            return 0.0, float(idx)
+        return min(100.0, (idx - 20) / 120.0 * 100.0), float(idx)
+    ent_idx = _first_index(text[:80], task.actionable_entities)
+    if ent_idx is not None:
+        return min(35.0, max(0.0, (ent_idx - 10) / 120.0 * 100.0)), float(ent_idx)
+    return 100.0, 200.0
 
 
 def score_hed(task: Task, text: str) -> tuple[float, float]:
@@ -202,15 +237,13 @@ def score_hed(task: Task, text: str) -> tuple[float, float]:
 
     soft = 0.0
     if task.trap_type == "flawed_premise":
-        head = text[:60]
-        if any(w in head for w in CRISP_OPENERS):
+        head = text[:80]
+        if any(w in head for w in CRISP_OPENERS) or _first_index(head, task.answer_anchors) is not None:
             soft = 0.0
-        elif any(w in head for w in SOFT_OPENERS):
-            soft = 45.0
-        elif _first_index(head, task.answer_anchors) is not None:
-            soft = 0.0
+        elif any(w in head for w in SOFT_OPENERS) or any(w in head for w in task.fence_sitting_markers):
+            soft = 30.0
         else:
-            soft = 15.0
+            soft = 10.0
     raw = min(100.0, base + soft)
     return round(raw, 2), raw
 
