@@ -441,24 +441,22 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
   <!-- Header / Topbar -->
   <header class="mb-6">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-      <div>
-        <div class="flex items-center gap-3">
-          <span class="bg-zinc-100 text-zinc-950 font-mono font-black text-xs px-2.5 py-0.5 tracking-wider">基准评测</span>
-          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-mono">天书榜 · TshuBench</h1>
-        </div>
-        <p class="text-sm sm:text-base text-zinc-400 font-sans mt-2">量化中文大模型工程回答中的“不说人话”与结构膨胀 · V3 确定性 AST 评测</p>
-      </div>
-      <div class="flex items-center gap-2.5">
-        <a href="https://github.com/DBinK/TshuBench" target="_blank" rel="noopener" class="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3.5 py-2 text-xs sm:text-sm font-mono inline-flex items-center gap-1.5 transition-colors">
-          <span>GitHub 仓库</span>
+      <h1 class="flex items-center gap-3 text-2xl sm:text-3xl font-extrabold tracking-tight font-mono">
+        <span class="bg-white text-zinc-950 px-2.5 py-0.5 font-black">TshuBench</span>
+        <span class="text-white">天书榜</span>
+      </h1>
+      <div class="flex items-center gap-2.5 text-xs font-mono">
+        <a href="https://github.com/DBinK/TshuBench" target="_blank" rel="noopener" class="border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:text-white text-zinc-300 px-3 py-1.5 inline-flex items-center gap-1.5 transition-colors">
+          <span>GitHub</span>
           <span class="text-zinc-500">↗</span>
         </a>
-        <a href="https://github.com/DBinK/TshuBench/blob/main/docs/%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88.md" target="_blank" rel="noopener" class="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3.5 py-2 text-xs sm:text-sm font-mono inline-flex items-center gap-1.5 transition-colors">
+        <a href="https://github.com/DBinK/TshuBench/blob/main/docs/%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88.md" target="_blank" rel="noopener" class="border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:text-white text-zinc-300 px-3 py-1.5 inline-flex items-center gap-1.5 transition-colors">
           <span>评测方案</span>
           <span class="text-zinc-500">↗</span>
         </a>
       </div>
     </div>
+    <p class="text-sm text-zinc-400 font-sans py-3">量化中文大模型工程回答中的“不说人话”与结构膨胀 · V3 确定性 AST 评测</p>
 
     <!-- Analytical Terminal Spec Strip -->
     <div class="grid grid-cols-2 md:grid-cols-4 border-x border-b border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
