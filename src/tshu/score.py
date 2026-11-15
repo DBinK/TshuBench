@@ -517,7 +517,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         </a>
       </div>
     </div>
-    <p class="text-sm text-zinc-400 font-sans py-3">专治 AI 废话、套话、长链推演与排版强迫症 · 100% 确定性规则打分，不靠 LLM 当裁判</p>
+    <p class="text-sm text-zinc-400 font-sans py-3">当代大模型图一乐评测，鉴定模型还说不说人话</p>
 
     <!-- Analytical Terminal Spec Strip -->
     <div class="grid grid-cols-2 md:grid-cols-4 border border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
