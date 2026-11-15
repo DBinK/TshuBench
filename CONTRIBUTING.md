@@ -38,14 +38,14 @@ runs/<provider>/<model_slug>_<effort>.jsonl
 
 ```bash
 # 1. 运行评测（自动内置 36 题数据集）
-uvx --from git+https://github.com/DBinK/TshuBench tshu run \
+uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu run \
   --model <provider/model-id> \
   --base-url <API_BASE_URL> \
   --api-key-env <YOUR_API_KEY_ENV> \
   --out runs/<provider>/<model_slug>_<effort>.jsonl
 
 # 2. 本地自检打分
-uvx --from git+https://github.com/DBinK/TshuBench tshu score \
+uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu score \
   runs/<provider>/<model_slug>_<effort>.jsonl \
   --out /tmp/tshu_check
 ```

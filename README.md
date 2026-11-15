@@ -46,14 +46,14 @@
 
 ```bash
 # 1. 运行指定模型的 36 题全量评测
-uvx --from git+https://github.com/DBinK/TshuBench tshu run \
+uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu run \
   --model <provider/model-id> \
   --base-url <API_BASE_URL> \
   --api-key-env <API_KEY_ENV_VAR> \
   --out runs/<provider>/<model_slug>_<effort>.jsonl
 
 # 2. 对样本执行确定性打分并生成本地战报
-uvx --from git+https://github.com/DBinK/TshuBench tshu score \
+uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu score \
   runs/<provider>/<model_slug>_<effort>.jsonl \
   --out reports \
   --html web/index.html

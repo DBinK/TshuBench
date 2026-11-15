@@ -29,7 +29,7 @@ metadata:
 3. **运行 36 题全量评测**
    - 若在仓库外运行，使用 `uvx` 免安装执行（内置 36 题数据集）：
      ```bash
-     uvx --from git+https://github.com/DBinK/TshuBench tshu run \
+     uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu run \
        --model "<provider/model>" \
        --base-url "<base_url>" \
        --api-key-env "<ENV_VAR_NAME>" \
@@ -41,7 +41,7 @@ metadata:
 4. **本地完整性校验与试算**
    - 运行自检命令：
      ```bash
-     uvx --from git+https://github.com/DBinK/TshuBench tshu score \
+     uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu score \
        "runs/<provider>/<model_slug>_<effort>.jsonl" \
        --out /tmp/tshu_verify
      ```
