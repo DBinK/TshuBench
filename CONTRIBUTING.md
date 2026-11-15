@@ -66,5 +66,5 @@ uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu score \
 提交 PR 后，GitHub Actions 将自动执行以下检查：
 - 校验 PR 仅在 `runs/` 下新增 `.jsonl` 文件，禁止修改或删除已有样本，且未篡改核心源码与题库。
 - 校验 Pydantic Schema 与 36 道题号的 100% 精确匹配。
-- 自动运行 `tshu score` 并在 PR 评论区回复该模型的诊断战报预览。
+- 自动运行 `tshu score` 并在 PR 评论区回复该模型的评测报告预览。
 - PR 合并进入 `main` 分支后，GitHub Pages 将自动重新汇算全榜数据并发布上线。
