@@ -1,9 +1,9 @@
-name: Verify Community Run PR
+name: Verify Run PR
 
 on:
   pull_request:
     paths:
-      - "runs/community/**"
+      - "runs/**/*.jsonl"
 
 permissions:
   contents: read
@@ -24,21 +24,28 @@ jobs:
       - name: Run Unit Tests
         run: uv run pytest
 
-      - name: Validate Changed Community Runs
+      - name: Validate Added Runs
         id: validate
         shell: bash
         run: |
           set -euo pipefail
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          STATUS_LINES=$(git diff --name-status origin/${{ github.base_ref }}...HEAD)
           echo "Changed files:"
-          echo "$CHANGED"
+          echo "$STATUS_LINES"
 
-          # 1. Ensure no files outside runs/community/ were modified
-          OUTSIDE=$(echo "$CHANGED" | grep -v '^runs/community/' || true)
-          if [ -n "$OUTSIDE" ]; then
-            echo "::error::PR 只允许修改 runs/community/ 目录下的文件，检测到越权改动：$OUTSIDE"
-            exit 1
-          fi
+          # 1. Only allow adding new .jsonl files under runs/
+          while IFS=$'\t' read -r st file; do
+            if [ "$st" != "A" ]; then
+              echo "::error::PR 只允许新增样本文件，禁止修改或删除已有文件：$st $file"
+              exit 1
+            fi
+            if [[ "$file" != runs/*.jsonl ]]; then
+              echo "::error::PR 只允许在 runs/ 目录下提交 .jsonl 文件，检测到越权改动：$file"
+              exit 1
+            fi
+          done <<< "$STATUS_LINES"
+
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
           # 2. Validate each changed jsonl file has all 36 tasks and passes tshu score
           mkdir -p /tmp/pr_check

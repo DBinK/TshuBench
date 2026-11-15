@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           shopt -s globstar nullglob
-          uv run tshu score runs/real/*.jsonl runs/official/**/*.jsonl runs/community/**/*.jsonl --out reports --html web/index.html
+          uv run tshu score runs/*/*.jsonl --out reports --html web/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

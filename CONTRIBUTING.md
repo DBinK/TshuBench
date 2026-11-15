@@ -10,10 +10,10 @@
 
 ## 2. 目录与命名规范
 
-请将社区跑分文件放置在 `runs/community/<provider>/` 目录下，命名格式如下：
+请将评测样本文件放置在 `runs/<provider>/` 目录下，命名格式如下：
 
 ```text
-runs/community/<provider>/<model_slug>_<effort>.jsonl
+runs/<provider>/<model_slug>_<effort>.jsonl
 ```
 
 - `<provider>`：模型厂商或标准聚合路由名（如 `anthropic`、`openai`、`google`、`deepseek`、`qwen` 等，全小写）。
@@ -21,8 +21,8 @@ runs/community/<provider>/<model_slug>_<effort>.jsonl
 - `<effort>`：思考档位（如 `minimal`、`low`、`medium`、`high`、`none`）。
 
 示例：
-- `runs/community/deepseek/deepseek-v3.2_low.jsonl`
-- `runs/official/google/gemini-4-argon_medium.jsonl`
+- `runs/deepseek/deepseek-v3.2_low.jsonl`
+- `runs/google/gemini-4-argon_medium.jsonl`
 
 ## 3. 多思考档位归并规则
 
@@ -42,11 +42,11 @@ uvx --from git+https://github.com/DBinK/TshuBench tshu run \
   --model <provider/model-id> \
   --base-url <API_BASE_URL> \
   --api-key-env <YOUR_API_KEY_ENV> \
-  --out runs/community/<provider>/<model_slug>_<effort>.jsonl
+  --out runs/<provider>/<model_slug>_<effort>.jsonl
 
 # 2. 本地自检打分
 uvx --from git+https://github.com/DBinK/TshuBench tshu score \
-  runs/community/<provider>/<model_slug>_<effort>.jsonl \
+  runs/<provider>/<model_slug>_<effort>.jsonl \
   --out /tmp/tshu_check
 ```
 
@@ -57,7 +57,7 @@ uvx --from git+https://github.com/DBinK/TshuBench tshu score \
 ## 5. 自动化门禁（CI）
 
 提交 PR 后，GitHub Actions 将自动执行以下检查：
-- 校验 PR 仅在 `runs/community/` 下新增或更新 `.jsonl` 文件，未篡改核心源码与题库。
+- 校验 PR 仅在 `runs/` 下新增 `.jsonl` 文件，禁止修改或删除已有样本，且未篡改核心源码与题库。
 - 校验 Pydantic Schema 与 36 道题号的 100% 精确匹配。
 - 自动运行 `tshu score` 并在 PR 评论区回复该模型的诊断战报预览。
 - PR 合并进入 `main` 分支后，GitHub Pages 将自动重新汇算全榜数据并发布上线。

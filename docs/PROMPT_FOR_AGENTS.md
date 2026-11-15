@@ -11,7 +11,7 @@
 
 2. **执行 36 题全量评测**：
    - 使用 `uvx --from git+https://github.com/DBinK/TshuBench tshu run`（若当前已在 TshuBench 仓库目录内，则用 `uv run tshu run`）执行评测。
-   - 输出路径严格遵循：`runs/community/<provider>/<model_slug>_<effort>.jsonl`。
+   - 输出路径严格遵循：`runs/<provider>/<model_slug>_<effort>.jsonl`。
 
 3. **本地校验与试算**：
    - 运行 `tshu score <输出文件路径> --out /tmp/tshu_verify`。
