@@ -325,15 +325,19 @@ def render_html(
         effort_text = html.escape(report.reasoning_effort or "默认")
         route_note_text = html.escape(report.route_note or "")
 
-        worst_items = []
-        if getattr(report, "worst", None):
-            for item in report.worst[:2]:
-                worst_items.append({
-                    "task_id": getattr(item.task, "id", str(item.task)),
-                    "prompt": getattr(item.task, "prompt", ""),
-                    "score": round(float(item.metrics.tshu_score), 1),
-                    "response": item.sample.response[:240] + ("..." if len(item.sample.response) > 240 else ""),
-                })
+        def _build_worst(rpt: ModelReport) -> list[dict]:
+            items = []
+            if getattr(rpt, "worst", None):
+                for item in rpt.worst[:2]:
+                    items.append({
+                        "task_id": getattr(item.task, "id", str(item.task)),
+                        "prompt": getattr(item.task, "prompt", ""),
+                        "score": round(float(item.metrics.tshu_score), 1),
+                        "response": item.sample.response[:240] + ("..." if len(item.sample.response) > 240 else ""),
+                    })
+            return items
+
+        worst_items = _build_worst(report)
 
         variants_data = []
         if variants_by_model and report.model in variants_by_model:
@@ -345,6 +349,8 @@ def render_html(
                     "ci_lower": round(v.ci_lower, 2),
                     "ci_upper": round(v.ci_upper, 2),
                     "tier": v_tier,
+                    "metrics": {k: round(v.metrics[k], 1) for k in METRIC_LABELS},
+                    "worst": _build_worst(v),
                 })
 
         entry = {
@@ -646,7 +652,8 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     provider: 'all',
     sortKey: 'tshu_score',
     sortAsc: true,
-    expanded: new Set()
+    expanded: new Set(),
+    selectedVariant: {{}}
   }};
 
   const majorProviders = new Set(['Google', 'Anthropic', 'OpenAI']);
@@ -743,6 +750,12 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       if (isExpanded) {{
         const drawerTr = document.createElement('tr');
         drawerTr.className = 'bg-black border-b border-zinc-800';
+        const hasVariants = item.effort_variants && item.effort_variants.length > 0;
+        const activeIdx = hasVariants ? (state.selectedVariant[item.model] ?? 0) : 0;
+        const active = hasVariants ? (item.effort_variants[activeIdx] || item) : item;
+        const activeMetrics = active.metrics || item.metrics;
+        const activeWorst = active.worst || item.worst;
+
         let cardsHtml = '';
         const metricLabels = {{
           cci: ['长链推演', '长复合句与改口推演痕迹 (24%)'],
@@ -753,7 +766,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           hed: ['防御叠甲', '逢人便叠甲，常识过度免责 (12%)']
         }};
         for (const [k, [lbl, desc]] of Object.entries(metricLabels)) {{
-          const val = item.metrics[k] !== undefined ? item.metrics[k] : 0;
+          const val = activeMetrics[k] !== undefined ? activeMetrics[k] : 0;
           cardsHtml += `
             <div class="bg-zinc-950 border border-zinc-800 p-3.5">
               <div class="text-xs font-mono text-zinc-300 font-bold">${{lbl}}</div>
@@ -768,9 +781,11 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           let vCards = '';
           item.effort_variants.forEach((v, idx) => {{
             const isBest = idx === 0;
+            const isActive = idx === activeIdx;
             const badge = isBest ? '<span class="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 ml-2">主榜代表</span>' : '';
+            const borderCls = isActive ? 'border-emerald-400 ring-1 ring-emerald-400/40' : (isBest ? 'border-emerald-500/40 hover:border-zinc-500' : 'border-zinc-800 hover:border-zinc-600');
             vCards += `
-              <div class="bg-zinc-950 border ${{isBest ? 'border-emerald-500/40' : 'border-zinc-800'}} p-3">
+              <div data-variant-idx="${{idx}}" class="variant-card cursor-pointer transition-colors bg-zinc-950 border ${{borderCls}} p-3">
                 <div class="flex items-center justify-between text-xs font-mono text-zinc-300">
                   <span>档位：${{v.effort}}</span>${{badge}}
                 </div>
@@ -781,19 +796,19 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           }});
           variantsHtml = `
             <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
-              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 多思考档位对比（主榜取天书指数最低档）</div>
+              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 多思考档位对比（点击卡片切换下方诊断与样本）</div>
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${{vCards}}</div>
             </div>
           `;
         }}
 
         let badcasesHtml = '';
-        if (item.worst && item.worst.length > 0) {{
+        if (activeWorst && activeWorst.length > 0) {{
           badcasesHtml = `
             <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
               <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 典型高扣分样本</div>
           `;
-          item.worst.forEach(w => {{
+          activeWorst.forEach(w => {{
             const promptHtml = w.prompt ? `<div class="text-zinc-200 font-sans text-xs sm:text-sm mb-2 bg-zinc-950 border border-zinc-800 px-3 py-2"><span class="text-emerald-400 font-mono font-bold mr-1.5">问：</span>${{w.prompt}}</div>` : '';
             badcasesHtml += `
               <div class="border-t border-zinc-800/80 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 text-sm">
@@ -806,12 +821,19 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           badcasesHtml += '</div>';
         }}
 
+        const activeEffort = active.effort || item.effort || '默认';
+        const parts = item.model.split('/');
+        const prov = parts.length > 1 ? parts[0].toLowerCase() : 'unknown';
+        const slug = (parts.length > 1 ? parts.slice(1).join('-') : parts[0]).replace(/[^a-zA-Z0-9._-]/g, '-');
+        const effSlug = activeEffort === '默认' ? 'default' : activeEffort;
+        const rawUrl = `https://github.com/DBinK/TshuBench/blob/main/runs/${{prov}}/${{slug}}_${{effSlug}}.jsonl`;
+
         drawerTr.innerHTML = `
           <td colspan="11" class="p-6 bg-black">
             <div class="max-w-5xl mx-auto">
               <div class="flex flex-col sm:flex-row sm:items-baseline justify-between border-b border-zinc-800 pb-3 mb-4">
-                <div class="font-bold text-base text-zinc-100 font-mono tracking-tight">// ${{item.name}} · 六维病灶诊断</div>
-                <div class="text-xs font-mono text-zinc-400 mt-1 sm:mt-0">天书指数：<span class="text-emerald-400 font-bold text-sm">${{item.tshu_score.toFixed(2)}}</span> · 95% 置信区间 [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</div>
+                <div class="font-bold text-base text-zinc-100 font-mono tracking-tight">// ${{item.name}} (${{activeEffort}}) · 六维病灶诊断 <a href="${{rawUrl}}" target="_blank" rel="noopener" class="ml-2 text-xs font-normal text-emerald-400 hover:underline">原始样本 ↗</a></div>
+                <div class="text-xs font-mono text-zinc-400 mt-1 sm:mt-0">天书指数：<span class="text-emerald-400 font-bold text-sm">${{active.tshu_score.toFixed(2)}}</span> · 95% 置信区间 [${{active.ci_lower.toFixed(1)}}, ${{active.ci_upper.toFixed(1)}}]</div>
               </div>
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">${{cardsHtml}}</div>
               ${{variantsHtml}}
@@ -819,6 +841,13 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
             </div>
           </td>
         `;
+        drawerTr.querySelectorAll('.variant-card').forEach(card => {{
+          card.addEventListener('click', (e) => {{
+            e.stopPropagation();
+            state.selectedVariant[item.model] = parseInt(card.dataset.variantIdx, 10);
+            render();
+          }});
+        }});
         tbody.appendChild(drawerTr);
       }}
     }});
