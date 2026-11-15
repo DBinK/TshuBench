@@ -404,10 +404,13 @@ def render_html(
         ("hed", "HED", "防御叠甲", ""),
     ]
     head_cells = "".join(
-        f"<th data-sort='{k}' title='{code}' class='py-3.5 px-2 text-center cursor-pointer hover:text-white select-none transition-colors group {border_cls}'>"
-        f"<div class='inline-flex items-center justify-center gap-1'>"
-        f"<span class='font-semibold text-xs text-zinc-200 group-hover:text-white whitespace-nowrap'>{desc}</span>"
+        f"<th data-sort='{k}' title='{code}' class='py-3.5 px-2 text-center cursor-pointer hover:text-white transition-colors group {border_cls}'>"
+        f"<div class='inline-flex flex-col items-center'>"
+        f"<div class='flex items-center gap-1'>"
+        f"<span class='font-semibold text-sm text-zinc-200 group-hover:text-white whitespace-nowrap'>{desc}</span>"
         f"<span class='sort-ind text-zinc-400 text-xs'></span>"
+        f"</div>"
+        f"<span class='text-[11px] text-zinc-400 font-mono font-normal mt-0.5'>{code}</span>"
         f"</div></th>"
         for k, code, desc, border_cls in metric_header_defs
     )
