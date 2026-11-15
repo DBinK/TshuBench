@@ -56,7 +56,34 @@ jobs:
             if [[ "$f" == *.jsonl ]]; then
               uv run python -c "from tshu.score import load_tasks, load_samples_grouped; tasks = load_tasks('tasks/eval_suite_v2.jsonl'); grouped = load_samples_grouped(['$f']); assert grouped, '$f 没有有效样本'; [print(f'OK: {m} ({e}) -> {len({s.task_id for s in ss if s.task_id in tasks})}/36') for (m, e), ss in grouped.items()]; assert all(not (set(tasks) - {s.task_id for s in ss if s.task_id in tasks}) for ss in grouped.values()), '缺少题目'"
               uv run tshu score "$f" --out /tmp/pr_check/out --html /tmp/pr_check/index.html
-              cat /tmp/pr_check/out/report.md >> /tmp/pr_check/comment.md
+              uv run python - << 'PY' >> /tmp/pr_check/comment.md
+import re
+from pathlib import Path
+
+text = Path('/tmp/pr_check/out/report.md').read_text(encoding='utf-8')
+lines = text.splitlines()
+
+row = next((ln for ln in lines if ln.startswith('| 1 |')), None)
+if row:
+    cols = [c.strip() for c in row.strip('|').split('|')]
+    # 0:排名 1:模型 2:思考档位 3:梯队 4:TshuScore 5:开口扣分 6:正文扣分 7:主导病灶
+    # 8:CCI 9:FMT 10:ENU 11:TIC 12:CVD 13:HED
+    print(f"#### `{cols[1]}` (`{cols[2]}`)\n")
+    print("| 梯队 | TshuScore (95% CI) | 开口扣分 | 正文扣分 | 主导病灶 |")
+    print("| :---: | :---: | :---: | :---: | --- |")
+    print(f"| {cols[3]} | {cols[4]} | {cols[5]} | {cols[6]} | {cols[7]} |\n")
+    print("| CCI 长链绕口 | FMT 排版强迫 | ENU 报菜名 | TIC 套话抽动 | CVD 决断延迟 | HED 防御叠甲 |")
+    print("| :---: | :---: | :---: | :---: | :---: | :---: |")
+    print(f"| {cols[8]} | {cols[9]} | {cols[10]} | {cols[11]} | {cols[12]} | {cols[13]} |\n")
+
+if '最像天书的五条：' in text:
+    examples = text.split('最像天书的五条：', 1)[1].strip()
+    examples = re.sub(r'```[a-zA-Z0-9_-]*\s*', '`', examples)
+    print("<details>")
+    print("<summary>最像天书的五条（点击展开）</summary>\n")
+    print(examples)
+    print("\n</details>\n")
+PY
             fi
           done
 
