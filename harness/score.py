@@ -278,9 +278,6 @@ def render_html(reports: list[ModelReport]) -> str:
     model_entries = []
     static_rows = []
 
-    metric_keys = list(METRIC_LABELS.keys())
-    metric_names = [v.split(" ")[0] for v in METRIC_LABELS.values()]
-
     for i, report in enumerate(ranked, start=1):
         display_name, provider = parse_model_display(report.model)
         tier_str = report.tier or classify_tier(report.tshu_score)
@@ -306,11 +303,8 @@ def render_html(reports: list[ModelReport]) -> str:
             "tier": tier_str,
             "tier_cls": tier_cls,
             "tshu_score": round(report.tshu_score, 2),
-            "open_score": round(report.open_score, 2),
-            "body_score": round(report.body_score, 2),
             "ci_lower": round(report.ci_lower, 2),
             "ci_upper": round(report.ci_upper, 2),
-            "profile": primary_profile(report.metrics),
             "route_note": route_note_text,
             "metrics": {k: round(report.metrics[k], 1) for k in METRIC_LABELS},
             "worst": worst_items,
@@ -318,490 +312,196 @@ def render_html(reports: list[ModelReport]) -> str:
         model_entries.append(entry)
 
         # Static row generation for tests & non-JS fallback
-        cells = "".join(f"<td class='metric-cell col-detailed'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
-        medal = "🥇 " if i == 1 else ("🥈 " if i == 2 else ("🥉 " if i == 3 else ""))
-        route_badge = f" <span class=ci>({route_note_text})</span>" if route_note_text else ""
+        cells = "".join(f"<td class='px-3 py-3 text-right font-mono text-xs text-zinc-300'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
+        route_badge = f" <span class='text-[10px] text-zinc-400 font-mono'>({route_note_text})</span>" if route_note_text else ""
         static_rows.append(
-            f"<tr class='model-row' data-rank='{i}'>"
-            f"<td class=rank>{medal}{i}</td>"
-            f"<td class=model><div class='model-title-wrap'><strong class='model-title'>{html.escape(display_name)}</strong>"
-            f"<span class='provider-tag'>{html.escape(provider)}</span></div>"
-            f"<div class='model-sub'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
-            f"<td class=effort>{effort_text}</td>"
-            f"<td class=tier><span class='tier-pill {tier_cls}'>{tier_str}</span></td>"
-            f"<td class=score><div class='score-box'><b class='score-val'>{report.tshu_score:.2f}</b>"
-            f"<span class=ci>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span><span class='score-arrow' title='扣分制，分数越低越自然'>↓</span></div></td>"
-            f"<td class='col-detailed'>{report.open_score:.2f}</td>"
-            f"<td class='col-detailed'>{report.body_score:.2f}</td>"
-            f"<td class=profile><span class='profile-badge'>{html.escape(entry['profile'])}</span></td>"
+            f"<tr class='model-row border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors cursor-pointer' data-rank='{i}'>"
+            f"<td class='px-3 py-3.5 text-center font-mono text-xs text-zinc-400'>{i}</td>"
+            f"<td class='px-4 py-3.5'><div class='flex items-center gap-2'>"
+            f"<span class='font-semibold text-sm text-zinc-100 tracking-tight'>{html.escape(display_name)}</span>"
+            f"<span class='text-[11px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60'>{html.escape(provider)}</span>"
+            f"</div><div class='text-[11px] font-mono text-zinc-400 mt-0.5'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
+            f"<td class='px-3 py-3.5 text-center font-mono text-xs text-zinc-400 effort'>{effort_text}</td>"
+            f"<td class='px-3 py-3.5 text-center'><span class='tier-pill {tier_cls} text-xs font-medium px-2 py-0.5 rounded-full'>{tier_str}</span></td>"
+            f"<td class='px-4 py-3.5 text-right'><div class='inline-flex items-baseline gap-1.5'>"
+            f"<span class='font-mono text-lg font-bold text-zinc-100'>{report.tshu_score:.2f}</span>"
+            f"<span class='font-mono text-[11px] text-zinc-400'>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
+            f"</div></td>"
             f"{cells}</tr>"
         )
 
     data_json = json.dumps(model_entries, ensure_ascii=False)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    head_cells = "".join(f"<th class='col-detailed' data-sort='{k}'>{html.escape(v)}</th>" for k, v in METRIC_LABELS.items())
+    metric_header_defs = [
+        ("cci", "CCI", "长链推演"),
+        ("fmt", "FMT", "排版膨胀"),
+        ("enu", "ENU", "报菜名"),
+        ("tic", "TIC", "套话模板"),
+        ("cvd", "CVD", "决断推延"),
+        ("hed", "HED", "防御叠甲"),
+    ]
+    head_cells = "".join(
+        f"<th data-sort='{k}' class='py-3 px-3 text-right cursor-pointer hover:text-zinc-100 select-none transition-colors'>"
+        f"<span class='block font-semibold tracking-wider text-xs text-zinc-300'>{code}</span>"
+        f"<span class='block text-[11px] font-normal text-zinc-400 mt-0.5'>{desc}</span></th>"
+        for k, code, desc in metric_header_defs
+    )
 
     return f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TshuBench · 天书榜 | 中文大模型表达负担评测</title>
-<style>
-:root {{
-  --bg: #0b0f19;
-  --surface: #111827;
-  --surface-hover: #172238;
-  --surface-border: #1f293d;
-  --surface-border-subtle: #2d3748;
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --text-dim: #64748b;
-  --accent: #38bdf8;
-  --t1-fg: #34d399;
-  --t1-bg: rgba(16, 185, 129, 0.12);
-  --t1-border: rgba(16, 185, 129, 0.35);
-  --t2-fg: #fbbf24;
-  --t2-bg: rgba(245, 158, 11, 0.12);
-  --t2-border: rgba(245, 158, 11, 0.35);
-  --t3-fg: #f87171;
-  --t3-bg: rgba(239, 68, 68, 0.12);
-  --t3-border: rgba(239, 68, 68, 0.35);
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {{
+  darkMode: 'class',
+  theme: {{
+    extend: {{
+      fontFamily: {{
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"PingFang SC"', '"Noto Sans CJK SC"', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'monospace'],
+      }},
+      colors: {{
+        zinc: {{
+          950: '#09090b',
+          900: '#121215',
+          850: '#18181b',
+          800: '#27272a',
+          700: '#3f3f46',
+        }}
+      }}
+    }}
+  }}
 }}
-* {{ box-sizing: border-box; }}
+</script>
+<style>
 body {{
-  margin: 0;
-  padding: 36px 20px 80px;
-  background: var(--bg);
-  color: var(--text-main);
-  font: 14px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  background-color: #09090b;
+  color: #f4f4f5;
   -webkit-font-smoothing: antialiased;
 }}
-.container {{
-  max-width: 1240px;
-  margin: 0 auto;
-}}
-header {{
-  margin-bottom: 28px;
-}}
-.header-top {{
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 14px;
-  margin-bottom: 8px;
-}}
-h1 {{
-  font-size: 30px;
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}}
-.sub-desc {{
-  font-size: 15px;
-  color: var(--text-muted);
-  margin: 0 0 16px;
-}}
-.pills-row {{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}}
-.stat-pill {{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  background: var(--surface);
-  border: 1px solid var(--surface-border);
-  font-size: 12px;
-  color: var(--text-muted);
-}}
-.stat-pill b {{
-  color: var(--text-main);
-}}
-.notice-card {{
-  background: rgba(56, 189, 248, 0.06);
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 13px;
-  color: #bae6fd;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}}
-.controls-card {{
-  background: var(--surface);
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  margin-bottom: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}}
-.search-row {{
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}}
-.search-wrap {{
-  position: relative;
-  flex: 1;
-  min-width: 240px;
-}}
-.search-input {{
-  width: 100%;
-  background: #090d16;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: var(--text-main);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s;
-}}
-.search-input:focus {{
-  border-color: var(--accent);
-}}
-.filters-wrap {{
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}}
-.btn-group {{
-  display: inline-flex;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid var(--surface-border);
-  background: #090d16;
-}}
-.filter-btn {{
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}}
-.filter-btn:hover {{
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.04);
-}}
-.filter-btn.active {{
-  color: #fff;
-  background: #1e293b;
-  font-weight: 600;
-}}
-.toggle-label {{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-muted);
-  cursor: pointer;
-  user-select: none;
-}}
-.toggle-label input {{
-  cursor: pointer;
-}}
-.table-card {{
-  background: var(--surface);
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}}
-.table-scroll {{
-  overflow-x: auto;
-  width: 100%;
-}}
-table {{
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 13px;
-}}
-th {{
-  background: #0e1422;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 12px;
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--surface-border);
-  white-space: nowrap;
-  user-select: none;
-  cursor: pointer;
-}}
-th:hover {{
-  color: var(--text-main);
-}}
-th.sort-active {{
-  color: var(--accent);
-}}
-td {{
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--surface-border);
-  vertical-align: middle;
-  white-space: nowrap;
-}}
-tr.model-row {{
-  cursor: pointer;
-  transition: background 0.12s;
-}}
-tr.model-row:hover {{
-  background: var(--surface-hover);
-}}
-td.rank {{
-  color: var(--text-muted);
-  font-weight: 600;
-  width: 44px;
-  text-align: center;
-}}
-.model-title-wrap {{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}}
-.model-title {{
-  color: var(--text-main);
-  font-size: 14px;
-}}
-.provider-tag {{
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-muted);
-}}
-.model-sub {{
-  color: var(--text-dim);
-  font-size: 11px;
-  margin-top: 2px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}}
-td.effort {{
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}}
-.tier-pill {{
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
-}}
 .tier-pill.t1 {{
-  color: var(--t1-fg);
-  background: var(--t1-bg);
-  border: 1px solid var(--t1-border);
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
 }}
 .tier-pill.t2 {{
-  color: var(--t2-fg);
-  background: var(--t2-bg);
-  border: 1px solid var(--t2-border);
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }}
 .tier-pill.t3 {{
-  color: var(--t3-fg);
-  background: var(--t3-bg);
-  border: 1px solid var(--t3-border);
-}}
-.score-box {{
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}}
-.score-val {{
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-}}
-.ci {{
-  color: var(--text-dim);
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}}
-.score-arrow {{
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: bold;
-}}
-.profile-badge {{
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: #090d16;
-  border: 1px solid var(--surface-border);
-  color: #cbd5e1;
-  font-size: 12px;
-}}
-.metric-cell {{
-  text-align: right;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #cbd5e1;
-}}
-.col-detailed {{
-  display: none;
-}}
-body.show-detailed .col-detailed {{
-  display: table-cell;
-}}
-.drawer-row {{
-  display: none;
-  background: #0c121e;
-}}
-.drawer-row.open {{
-  display: table-row;
-}}
-.drawer-content {{
-  padding: 16px 20px 20px;
-  border-bottom: 1px solid var(--surface-border);
-}}
-.drawer-grid {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}}
-.drawer-card {{
-  background: #111827;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 8px 12px;
-}}
-.drawer-card-label {{
-  color: var(--text-dim);
-  font-size: 11px;
-  margin-bottom: 2px;
-}}
-.drawer-card-val {{
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-main);
-}}
-.badcase-card {{
-  background: #111827;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 10px 14px;
-  margin-top: 10px;
-  font-size: 12px;
-}}
-.badcase-title {{
   color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}}
+.filter-btn.active {{
+  background-color: #27272a;
+  color: #ffffff;
   font-weight: 600;
-  margin-bottom: 4px;
-}}
-.badcase-body {{
-  color: var(--text-muted);
-  line-height: 1.5;
-  white-space: pre-wrap;
-}}
-footer {{
-  margin-top: 32px;
-  color: var(--text-dim);
-  font-size: 12px;
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}}
-footer a {{
-  color: var(--text-muted);
-  text-decoration: none;
-}}
-footer a:hover {{
-  text-decoration: underline;
 }}
 </style>
 </head>
-<body>
-<div class="container">
-  <header>
-    <div class="header-top">
-      <h1>TshuBench · 天书榜</h1>
-      <span class="sub-desc">量化大模型中文工程回答中的表达负担与黑话退化</span>
+<body class="min-h-screen text-zinc-100 antialiased selection:bg-zinc-800 selection:text-white">
+
+<div class="max-w-[1240px] mx-auto px-4 py-8 sm:px-6 sm:py-12">
+  <!-- Header / Hero -->
+  <header class="mb-8">
+    <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 mb-4">
+      <div>
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">TshuBench · 天书榜</h1>
+        <p class="text-sm sm:text-base text-zinc-400">量化中文大模型工程回答中的“不说人话”与结构膨胀</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/DBinK/TshuBench" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-white px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 transition-colors">
+          <span>GitHub</span>
+          <span class="text-zinc-400">↗</span>
+        </a>
+        <a href="https://github.com/DBinK/TshuBench/blob/main/docs/%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88.md" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-white px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 transition-colors">
+          <span>评测方案</span>
+          <span class="text-zinc-400">↗</span>
+        </a>
+      </div>
     </div>
-    <div class="pills-row">
-      <div class="stat-pill">⚡ 跨题分半信度 <b>r_SB = 0.968</b></div>
-      <div class="stat-pill">🎯 <b>17 款主流模型路由</b></div>
-      <div class="stat-pill">🧪 <b>36 题真实工程高频问答</b></div>
-      <div class="stat-pill">⚖️ <b>0 裁判模型 · 100% 确定性语法树与词法统计</b></div>
+
+    <!-- Metric Badges -->
+    <div class="flex flex-wrap gap-2 text-xs text-zinc-400 mb-4">
+      <div class="px-2.5 py-1 rounded bg-zinc-900/80 border border-zinc-800">⚡ 跨题分半信度 <strong class="text-zinc-200">r_SB = 0.968</strong></div>
+      <div class="px-2.5 py-1 rounded bg-zinc-900/80 border border-zinc-800">🎯 <strong class="text-zinc-200">17 款主流模型路由</strong></div>
+      <div class="px-2.5 py-1 rounded bg-zinc-900/80 border border-zinc-800">🧪 <strong class="text-zinc-200">36 题真实工程场景</strong></div>
+      <div class="px-2.5 py-1 rounded bg-zinc-900/80 border border-zinc-800">⚖️ <strong class="text-zinc-200">0 裁判模型 · 确定性 AST 语法树打分</strong></div>
     </div>
-    <div class="notice-card">
-      <span>💡</span>
-      <span><b>评分导读</b>：本榜采用反向扣分制（<b>↓ 分数越低越讲人话</b>）。0 分仅代表未触发预设六类文风病灶，不代表技术内容一定正确。点击任意模型行可展开病灶雷达与典型样本。</span>
+
+    <!-- Notice -->
+    <div class="rounded-lg bg-zinc-900/60 border border-zinc-800 p-3.5 text-xs text-zinc-400 flex items-start gap-2.5">
+      <span class="text-zinc-400 text-sm">💡</span>
+      <div class="leading-relaxed">
+        <strong class="text-zinc-300">评分导读</strong>：本榜采用反向扣分制（<span class="text-emerald-400 font-medium">↓ 分数越低越讲人话</span>）。0 分代表未触发预设六类文风病灶，不代表技术结论一定正确。点击任意模型行可展开病灶诊断与典型样本。
+      </div>
     </div>
   </header>
 
-  <div class="controls-card">
-    <div class="search-row">
-      <div class="search-wrap">
-        <input type="text" id="search-input" class="search-input" placeholder="🔍 搜索模型名称、厂商、底层路由代号..." />
-      </div>
-      <label class="toggle-label">
-        <input type="checkbox" id="toggle-detailed" />
-        <span>展开 6 项病灶扣分明细</span>
-      </label>
+  <!-- Controls / Filters -->
+  <div class="bg-zinc-900/70 border border-zinc-800 rounded-lg p-3.5 mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+    <div class="flex-1 min-w-[220px]">
+      <input type="text" id="search-input" placeholder="🔍 搜索模型名称、厂商、底层代号..." class="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-zinc-600 transition-colors" />
     </div>
-    <div class="filters-wrap">
-      <div class="btn-group" id="tier-group">
-        <button class="filter-btn active" data-tier="all">全部梯队 ({len(ranked)})</button>
-        <button class="filter-btn" data-tier="T1 · 人话级">🟢 T1 · 人话级</button>
-        <button class="filter-btn" data-tier="T2 · 黑话级">🟡 T2 · 黑话级</button>
-        <button class="filter-btn" data-tier="T3 · 天书级">🔴 T3 · 天书级</button>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Tier Filter -->
+      <div class="inline-flex rounded-md bg-zinc-950 p-0.5 border border-zinc-800" id="tier-group">
+        <button class="filter-btn active text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="all">全部</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="T1 · 人话级">🟢 T1 人话</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="T2 · 黑话级">🟡 T2 黑话</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="T3 · 天书级">🔴 T3 天书</button>
       </div>
-      <div class="btn-group" id="provider-group">
-        <button class="filter-btn active" data-provider="all">全部厂商</button>
-        <button class="filter-btn" data-provider="Google">Google</button>
-        <button class="filter-btn" data-provider="Anthropic">Anthropic</button>
-        <button class="filter-btn" data-provider="OpenAI">OpenAI</button>
-        <button class="filter-btn" data-provider="Domestic">国产主流</button>
+
+      <!-- Provider Filter -->
+      <div class="inline-flex rounded-md bg-zinc-950 p-0.5 border border-zinc-800" id="provider-group">
+        <button class="filter-btn active text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="all">全部厂商</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Google">Google</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Anthropic">Anthropic</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="OpenAI">OpenAI</button>
+        <button class="filter-btn text-xs px-2.5 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Domestic">国产主流</button>
       </div>
     </div>
   </div>
 
-  <div class="table-card">
-    <div class="table-scroll">
-      <table id="leaderboard-table">
+  <!-- Leaderboard Table -->
+  <div class="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/40">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse" id="leaderboard-table">
         <thead>
-          <tr>
-            <th data-sort="rank" class="sort-active" style="width: 44px; text-align: center;">#</th>
-            <th data-sort="name">模型与厂商</th>
-            <th>思考档位</th>
-            <th data-sort="tier">梯队</th>
-            <th data-sort="tshu_score">天书指数 (95% CI) ↓</th>
-            <th>开口扣分</th><th>正文扣分</th>
-            <th data-sort="profile">主导病灶画像</th>
+          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs">
+            <th data-sort="rank" class="py-3 px-3 text-center text-zinc-400 font-mono w-12 cursor-pointer hover:text-zinc-100 select-none">#</th>
+            <th data-sort="name" class="py-3 px-4 text-zinc-300 font-semibold cursor-pointer hover:text-zinc-100 select-none">模型与厂商</th>
+            <th data-sort="effort" class="py-3 px-3 text-center text-zinc-400 font-medium cursor-pointer hover:text-zinc-100 select-none">思考档位</th>
+            <th data-sort="tier" class="py-3 px-3 text-center text-zinc-400 font-medium cursor-pointer hover:text-zinc-100 select-none">梯队</th>
+            <th data-sort="tshu_score" class="py-3 px-4 text-right cursor-pointer hover:text-zinc-100 select-none sort-active">
+              <span class="block font-semibold tracking-wider text-xs text-zinc-200">天书指数 ↓</span>
+              <span class="block text-[11px] font-normal text-emerald-400 mt-0.5">越低越讲人话</span>
+            </th>
             {head_cells}
           </tr>
         </thead>
-        <tbody id="leaderboard-body">
+        <tbody id="leaderboard-body" class="divide-y divide-zinc-800/60">
           {''.join(static_rows)}
         </tbody>
       </table>
     </div>
   </div>
 
-  <footer>
-    <div>基于 V3 评测架构 · 生成时间：{now_str} · 全量 612 条真实工程样本</div>
-    <div><a href="https://github.com/DBinK/TshuBench" target="_blank" rel="noopener">GitHub 仓库 (DBinK/TshuBench)</a> ｜ <a href="https://github.com/DBinK/TshuBench/blob/main/docs/%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88.md" target="_blank">评测技术方案</a></div>
+  <!-- Footer -->
+  <footer class="mt-8 pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-400">
+    <div>基于 V3 架构 · 生成时间：{now_str} · 全量 612 条真实样本</div>
+    <div>MIT 开源协议 · 确定性 AST 语法树与词法统计</div>
   </footer>
 </div>
 
@@ -816,7 +516,6 @@ footer a:hover {{
     search: '',
     tier: 'all',
     provider: 'all',
-    detailed: false,
     sortKey: 'tshu_score',
     sortAsc: true,
     expanded: new Set()
@@ -826,14 +525,11 @@ footer a:hover {{
 
   const tbody = document.getElementById('leaderboard-body');
   const searchInput = document.getElementById('search-input');
-  const toggleDetailed = document.getElementById('toggle-detailed');
   const tierBtns = document.querySelectorAll('#tier-group .filter-btn');
   const providerBtns = document.querySelectorAll('#provider-group .filter-btn');
   const ths = document.querySelectorAll('#leaderboard-table th');
 
   function render() {{
-    document.body.classList.toggle('show-detailed', state.detailed);
-
     let filtered = rawData.filter(item => {{
       if (state.tier !== 'all' && item.tier !== state.tier) return false;
       if (state.provider === 'Domestic' && !domesticProviders.has(item.provider)) return false;
@@ -842,8 +538,7 @@ footer a:hover {{
         const q = state.search.toLowerCase();
         const match = item.name.toLowerCase().includes(q) ||
                       item.model.toLowerCase().includes(q) ||
-                      item.provider.toLowerCase().includes(q) ||
-                      item.profile.toLowerCase().includes(q);
+                      item.provider.toLowerCase().includes(q);
         if (!match) return false;
       }}
       return true;
@@ -861,12 +556,6 @@ footer a:hover {{
         valA = a.tier.localeCompare(b.tier); valB = 0;
       }} else if (state.sortKey === 'tshu_score') {{
         valA = a.tshu_score; valB = b.tshu_score;
-      }} else if (state.sortKey === 'open_score') {{
-        valA = a.open_score; valB = b.open_score;
-      }} else if (state.sortKey === 'body_score') {{
-        valA = a.body_score; valB = b.body_score;
-      }} else if (state.sortKey === 'profile') {{
-        valA = a.profile.localeCompare(b.profile); valB = 0;
       }} else if (a.metrics && a.metrics[state.sortKey] !== undefined) {{
         valA = a.metrics[state.sortKey]; valB = b.metrics[state.sortKey];
       }} else {{
@@ -878,41 +567,35 @@ footer a:hover {{
     tbody.innerHTML = '';
     filtered.forEach(item => {{
       const tr = document.createElement('tr');
-      tr.className = 'model-row';
+      tr.className = 'model-row border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors cursor-pointer';
       const isExpanded = state.expanded.has(item.model);
 
-      const medal = item.rank === 1 ? '🥇 ' : (item.rank === 2 ? '🥈 ' : (item.rank === 3 ? '🥉 ' : ''));
-      const routeBadge = item.route_note ? ` <span class="ci">(${{item.route_note}})</span>` : '';
+      const routeBadge = item.route_note ? ` <span class="text-[10px] text-zinc-400 font-mono">(${{item.route_note}})</span>` : '';
 
       let detailedTds = '';
-      if (item.metrics) {{
-        detailedTds += `<td class="col-detailed metric-cell">${{item.open_score.toFixed(2)}}</td>`;
-        detailedTds += `<td class="col-detailed metric-cell">${{item.body_score.toFixed(2)}}</td>`;
-        for (const k of ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed']) {{
-          detailedTds += `<td class="metric-cell col-detailed">${{item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-'}}</td>`;
-        }}
+      for (const k of ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed']) {{
+        const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
+        detailedTds += `<td class="px-3 py-3 text-right font-mono text-xs text-zinc-300">${{val}}</td>`;
       }}
 
       tr.innerHTML = `
-        <td class="rank">${{medal}}${{item.rank}}</td>
-        <td class="model">
-          <div class="model-title-wrap">
-            <strong class="model-title">${{item.name}}</strong>
-            <span class="provider-tag">${{item.provider}}</span>
+        <td class="px-3 py-3.5 text-center font-mono text-xs text-zinc-400">${{item.rank}}</td>
+        <td class="px-4 py-3.5">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-sm text-zinc-100 tracking-tight">${{item.name}}</span>
+            <span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">${{item.provider}}</span>
           </div>
-          <div class="model-sub"><code>${{item.model}}</code>${{routeBadge}}</div>
+          <div class="text-[11px] font-mono text-zinc-400 mt-0.5"><code>${{item.model}}</code>${{routeBadge}}</div>
         </td>
-        <td class="effort">${{item.effort}}</td>
-        <td class="tier"><span class="tier-pill ${{item.tier_cls}}">${{item.tier}}</span></td>
-        <td class="score">
-          <div class="score-box">
-            <b class="score-val">${{item.tshu_score.toFixed(2)}}</b>
-            <span class="ci">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</span>
-            <span class="score-arrow" title="扣分制，越低越好">↓</span>
+        <td class="px-3 py-3.5 text-center font-mono text-xs text-zinc-400 effort">${{item.effort}}</td>
+        <td class="px-3 py-3.5 text-center"><span class="tier-pill ${{item.tier_cls}} text-xs font-medium px-2 py-0.5 rounded-full">${{item.tier}}</span></td>
+        <td class="px-4 py-3.5 text-right">
+          <div class="inline-flex items-baseline gap-1.5">
+            <span class="font-mono text-lg font-bold text-zinc-100">${{item.tshu_score.toFixed(2)}}</span>
+            <span class="font-mono text-[11px] text-zinc-400">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</span>
           </div>
         </td>
         ${{detailedTds}}
-        <td class="profile"><span class="profile-badge">${{item.profile}}</span></td>
       `;
 
       tr.addEventListener('click', () => {{
@@ -927,44 +610,45 @@ footer a:hover {{
 
       if (isExpanded) {{
         const drawerTr = document.createElement('tr');
-        drawerTr.className = 'drawer-row open';
+        drawerTr.className = 'bg-zinc-950/80 border-b border-zinc-800';
         let cardsHtml = '';
         const metricLabels = {{
-          cci: 'CCI 长链绕口',
-          fmt: 'FMT 排版强迫',
-          enu: 'ENU 报菜名',
-          tic: 'TIC 套话模板',
-          cvd: 'CVD 首句决断',
-          hed: 'HED 防御叠甲'
+          cci: ['CCI 长链推演', '长复合句与改口推演痕迹 (24%)'],
+          fmt: ['FMT 排版膨胀', 'Markdown 结构强迫与支线清单 (16%)'],
+          enu: ['ENU 报菜名', '顿号斜杠与高密符号压缩 (20%)'],
+          tic: ['TIC 套话模板', '套话抽动与公文式结构 (16%)'],
+          cvd: ['CVD 决断推延', '首句打太极，结论后置 (12%)'],
+          hed: ['HED 防御叠甲', '逢人便叠甲，常识过度免责 (12%)']
         }};
-        for (const [k, lbl] of Object.entries(metricLabels)) {{
+        for (const [k, [lbl, desc]] of Object.entries(metricLabels)) {{
           const val = item.metrics[k] !== undefined ? item.metrics[k] : 0;
           cardsHtml += `
-            <div class="drawer-card">
-              <div class="drawer-card-label">${{lbl}}</div>
-              <div class="drawer-card-val">${{val.toFixed(1)}}</div>
+            <div class="bg-zinc-900 border border-zinc-800 rounded p-2.5">
+              <div class="text-[11px] font-medium text-zinc-400">${{lbl}}</div>
+              <div class="font-mono text-base font-bold text-zinc-100 my-0.5">${{val.toFixed(1)}}</div>
+              <div class="text-[10px] text-zinc-400">${{desc}}</div>
             </div>
           `;
         }}
 
         let badcasesHtml = '';
         if (item.worst && item.worst.length > 0) {{
-          badcasesHtml = '<div style="margin-top: 12px; font-weight: 600; color: #cbd5e1; font-size: 12px;">典型最高扣分题 (Badcases)：</div>';
+          badcasesHtml = '<div class="mt-4 font-semibold text-xs text-zinc-300">典型最高扣分题 (Badcases)：</div>';
           item.worst.forEach(w => {{
             badcasesHtml += `
-              <div class="badcase-card">
-                <div class="badcase-title">题目 [${{w.task_id}}] · 扣分 ${{w.score}}</div>
-                <div class="badcase-body">${{w.response}}</div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded p-3 mt-2 text-xs">
+                <div class="text-red-400 font-medium mb-1 font-mono">题目 [${{w.task_id}}] · 扣分 ${{w.score}}</div>
+                <div class="text-zinc-400 leading-relaxed font-sans">${{w.response}}</div>
               </div>
             `;
           }});
         }}
 
         drawerTr.innerHTML = `
-          <td colspan="15" style="padding: 0;">
-            <div class="drawer-content">
-              <div style="font-weight: 600; color: #cbd5e1; font-size: 13px; margin-bottom: 8px;">${{item.name}} · 病灶六维扣分明细：</div>
-              <div class="drawer-grid">${{cardsHtml}}</div>
+          <td colspan="11" class="p-4 bg-zinc-950">
+            <div class="max-w-4xl mx-auto">
+              <div class="font-semibold text-xs text-zinc-300 mb-2">${{item.name}} · 六维病灶诊断</div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">${{cardsHtml}}</div>
               ${{badcasesHtml}}
             </div>
           </td>
@@ -973,27 +657,23 @@ footer a:hover {{
       }}
     }});
 
-    // Update th active state
+    // Update th active sort indicators
     ths.forEach(th => {{
       const key = th.getAttribute('data-sort');
+      const sortIndicator = th.querySelector('.sort-ind');
+      if (sortIndicator) sortIndicator.remove();
       if (key === state.sortKey) {{
-        th.classList.add('sort-active');
-        th.textContent = th.textContent.replace(/ [▲▼]/, '') + (state.sortAsc ? ' ▲' : ' ▼');
-      }} else {{
-        th.classList.remove('sort-active');
-        th.textContent = th.textContent.replace(/ [▲▼]/, '');
+        const ind = document.createElement('span');
+        ind.className = 'sort-ind ml-1 text-zinc-400 text-[10px]';
+        ind.textContent = state.sortAsc ? '▲' : '▼';
+        th.appendChild(ind);
       }}
     }});
   }}
 
-  // Bind controls
+  // Event bindings
   searchInput.addEventListener('input', (e) => {{
     state.search = e.target.value.trim();
-    render();
-  }});
-
-  toggleDetailed.addEventListener('change', (e) => {{
-    state.detailed = e.target.checked;
     render();
   }});
 

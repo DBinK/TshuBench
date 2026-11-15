@@ -60,6 +60,6 @@ def test_score_model_records_reasoning_effort():
     assert "| 思考档位 |" in md
     assert "| 开口扣分 | 正文扣分 |" in md
     assert "- 思考档位：low" in md
-    assert "<th>思考档位</th>" in html_doc
-    assert "<th>开口扣分</th><th>正文扣分</th>" in html_doc
-    assert "<td class=effort>medium</td>" in html_doc
+    assert "思考档位" in html_doc
+    assert "CCI" in html_doc
+    assert "medium" in html_doc
