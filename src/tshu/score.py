@@ -503,7 +503,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
   <header class="mb-6">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
       <h1 class="flex items-center gap-3 text-2xl sm:text-3xl font-extrabold tracking-tight font-mono">
-        <span class="bg-white text-zinc-950 px-3 font-mono font-black text-xl sm:text-2xl inline-flex items-center justify-center h-9 sm:h-10 select-none">TshuBench</span>
+        <span class="bg-white text-zinc-950 px-3 font-mono font-black text-xl sm:text-2xl inline-flex items-center justify-center h-9 sm:h-10" style="font-weight: 900;">TshuBench</span>
         <span class="text-white text-2xl sm:text-3xl font-extrabold tracking-tight">天书榜</span>
       </h1>
       <div class="flex items-center gap-2.5 font-mono">
@@ -517,7 +517,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         </a>
       </div>
     </div>
-    <p class="text-sm text-zinc-400 font-sans py-3">中文大模型工程回答「说人话」程度评测基准 · 基于确定性 AST 规则</p>
+    <p class="text-sm text-zinc-400 font-sans py-3">专治 AI 废话、套话、长链推演与排版强迫症 · 100% 确定性规则打分，不靠 LLM 当裁判</p>
 
     <!-- Analytical Terminal Spec Strip -->
     <div class="grid grid-cols-2 md:grid-cols-4 border border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
@@ -590,26 +590,26 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           <col style="width: 80px;">   <!-- 11: 防御叠甲 -->
         </colgroup>
         <thead>
-          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs text-zinc-300">
-            <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white select-none">
-              <span class="font-semibold text-xs">#</span>
+          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-sm text-zinc-300">
+            <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white">
+              <span class="font-semibold text-sm">#</span>
             </th>
-            <th data-sort="name" class="py-3.5 px-4 text-zinc-200 font-semibold cursor-pointer hover:text-white select-none">
+            <th data-sort="name" class="py-3.5 px-4 text-zinc-200 font-semibold cursor-pointer hover:text-white">
               <div class="flex items-center gap-1">
-                <span class="font-semibold text-xs">模型与厂商</span>
+                <span class="font-semibold text-sm">模型与厂商</span>
                 <span class="sort-ind text-zinc-400 text-xs"></span>
               </div>
             </th>
-            <th data-sort="effort" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
-              <span class="font-semibold text-xs">思考档位</span>
+            <th data-sort="effort" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white">
+              <span class="font-semibold text-sm">思考档位</span>
             </th>
-            <th data-sort="tier" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
-              <span class="font-semibold text-xs">梯队</span>
+            <th data-sort="tier" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white">
+              <span class="font-semibold text-sm">梯队</span>
             </th>
-            <th data-sort="tshu_score" class="py-3.5 px-3 text-center cursor-pointer hover:text-white select-none sort-active group border-l border-zinc-800">
+            <th data-sort="tshu_score" class="py-3.5 px-3 text-center cursor-pointer hover:text-white sort-active group border-l border-zinc-800">
               <div class="inline-flex flex-col items-center">
                 <div class="flex items-center gap-1">
-                  <span class="font-bold text-xs text-zinc-100 group-hover:text-white">天书指数</span>
+                  <span class="font-bold text-sm text-zinc-100 group-hover:text-white">天书指数</span>
                   <span class="sort-ind text-zinc-400 text-xs">▲</span>
                 </div>
                 <span class="text-[11px] text-emerald-400 font-mono font-normal mt-0.5">越低越好</span>
