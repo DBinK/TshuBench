@@ -503,10 +503,10 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       <div class="flex flex-wrap items-center">
         <!-- Tier Filter -->
         <div class="flex items-center border-b xl:border-b-0 xl:border-r border-zinc-800 divide-x divide-zinc-800" id="tier-group">
-          <button class="filter-btn active px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="all">全部 (17)</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="人话级">🟢 人话级 (7)</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="黑话级">🟡 黑话级 (7)</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="天书级">🔴 天书级 (3)</button>
+          <button class="filter-btn active px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="all">全部梯队</button>
+          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="人话级">🟢 人话级</button>
+          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="黑话级">🟡 黑话级</button>
+          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="天书级">🔴 天书级</button>
         </div>
 
         <!-- Provider Filter: Merged Meta and Domestic into 'Other' (其它) -->
