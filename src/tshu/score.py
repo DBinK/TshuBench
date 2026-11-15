@@ -523,7 +523,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     <div class="grid grid-cols-2 md:grid-cols-4 border border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
       <div class="p-3.5 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">最近更新</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{date_str}</div>
+        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{now_str}</div>
       </div>
       <div class="p-3.5 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">参评模型</div>
