@@ -17,10 +17,10 @@ WEIGHTS = {
 def classify_tier(score: float) -> str:
     """按综合天书指数划分三档梯队。"""
     if score < 10.0:
-        return "T1 · 人话级"
+        return "人话级"
     if score < 14.0:
-        return "T2 · 黑话级"
-    return "T3 · 天书级"
+        return "黑话级"
+    return "天书级"
 
 
 with warnings.catch_warnings():

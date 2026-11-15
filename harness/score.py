@@ -236,18 +236,18 @@ MODEL_BRANDS: dict[str, tuple[str, str]] = {
     "auto/gemini-4-argon": ("Gemini 4 Argon", "Google"),
     "auto/gemini-4-hydrogen": ("Gemini 4 Hydrogen", "Google"),
     "auto/gemini-3.8-flash": ("Gemini 3.8 Flash", "Google"),
-    "opencode-go/muse-spark-1.3-contributor": ("Muse Spark 1.3 Contributor", "OpenCode"),
-    "opencode-zen/claude-sonnet-5-5": ("Claude 3.7 Sonnet", "Anthropic"),
-    "auto/claude-haiku-5-5": ("Claude 3.5 Haiku", "Anthropic"),
-    "opencode-zen/claude-opus-5-5": ("Claude 3.7 Opus", "Anthropic"),
+    "opencode-go/muse-spark-1.3-contributor": ("Muse Spark 1.3 Contributor", "Meta"),
+    "opencode-zen/claude-sonnet-5-5": ("Claude Sonnet 5.5", "Anthropic"),
+    "auto/claude-haiku-5-5": ("Claude Haiku 5.5", "Anthropic"),
+    "opencode-zen/claude-opus-5-5": ("Claude Opus 5.5", "Anthropic"),
     "codex/gpt-6.1-terra": ("GPT-6.1 Terra", "OpenAI"),
     "opencode-zen/glm-5.3": ("GLM-5.3", "Zhipu"),
     "opencode-go/glm-5.3-flash": ("GLM-5.3 Flash", "Zhipu"),
     "codex/gpt-6-luna": ("GPT-6 Luna", "OpenAI"),
     "opencode-go/kimi-k3.1-pro": ("Kimi K3.1 Pro", "Moonshot"),
     "codex/gpt-6.1-sol": ("GPT-6.1 Sol", "OpenAI"),
-    "opencode-zen/qwen3.8-flash": ("Qwen 3.8 Flash", "Alibaba"),
-    "opencode-zen/qwen3.8-max": ("Qwen 3.8 Max", "Alibaba"),
+    "opencode-zen/qwen3.8-flash": ("Qwen3.8 Flash", "Alibaba"),
+    "opencode-zen/qwen3.8-max": ("Qwen3.8 Max", "Alibaba"),
     "auto/deepseek-v4.1-flash": ("DeepSeek V4.1 Flash", "DeepSeek"),
     "auto/minimax-m3.1-flash": ("MiniMax M3.1 Flash", "MiniMax"),
 }
@@ -267,6 +267,7 @@ def parse_model_display(model: str) -> tuple[str, str]:
         ("glm", "Zhipu"),
         ("kimi", "Moonshot"),
         ("minimax", "MiniMax"),
+        ("muse", "Meta"),
     ]:
         if brand in model.lower():
             return (name, provider)
@@ -281,7 +282,7 @@ def render_html(reports: list[ModelReport]) -> str:
     for i, report in enumerate(ranked, start=1):
         display_name, provider = parse_model_display(report.model)
         tier_str = report.tier or classify_tier(report.tshu_score)
-        tier_cls = "t1" if "T1" in tier_str else ("t2" if "T2" in tier_str else "t3")
+        tier_cls = "t1" if "人话" in tier_str else ("t2" if "黑话" in tier_str else "t3")
         effort_text = html.escape(report.reasoning_effort or "默认")
         route_note_text = html.escape(report.route_note or "")
 
@@ -324,10 +325,9 @@ def render_html(reports: list[ModelReport]) -> str:
             f"</div><div class='text-xs font-mono text-zinc-400 mt-0.5'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
             f"<td class='px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort'>{effort_text}</td>"
             f"<td class='px-3 py-3.5 text-center'><span class='tier-pill {tier_cls} text-xs font-semibold px-2.5 py-1 rounded-full'>{tier_str}</span></td>"
-            f"<td class='px-4 py-3.5 text-right'><div class='flex items-baseline justify-end gap-2'>"
-            f"<span class='font-mono text-lg font-bold text-zinc-50'>{report.tshu_score:.2f}</span>"
-            f"<span class='font-mono text-xs text-zinc-400'>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
-            f"</div></td>"
+            f"<td class='px-4 py-3.5 text-right'>"
+            f"<span class='font-mono text-lg font-bold text-zinc-50' title='95% 置信区间: [{report.ci_lower:.1f}, {report.ci_upper:.1f}]'>{report.tshu_score:.2f}</span>"
+            f"</td>"
             f"{cells}</tr>"
         )
 
@@ -477,9 +477,9 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       <!-- Tier Filter -->
       <div class="inline-flex rounded-md bg-zinc-950 p-0.5 border border-zinc-800" id="tier-group">
         <button class="filter-btn active text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="all">全部 (17)</button>
-        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="T1 · 人话级">🟢 T1 人话 (7)</button>
-        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="T2 · 黑话级">🟡 T2 黑话 (7)</button>
-        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="T3 · 天书级">🔴 T3 天书 (3)</button>
+        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="人话级">🟢 人话级 (7)</button>
+        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="黑话级">🟡 黑话级 (7)</button>
+        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-tier="天书级">🔴 天书级 (3)</button>
       </div>
 
       <!-- Provider Filter -->
@@ -488,7 +488,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Google">Google</button>
         <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Anthropic">Anthropic</button>
         <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="OpenAI">OpenAI</button>
-        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Domestic">国产主流</button>
+        <button class="filter-btn text-xs sm:text-sm px-3 py-1.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors" data-provider="Domestic">国产</button>
       </div>
     </div>
   </div>
@@ -528,10 +528,10 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
             <th data-sort="tshu_score" class="py-3 px-4 text-right cursor-pointer hover:text-white select-none sort-active group">
               <div class="inline-flex flex-col items-end">
                 <div class="flex items-center gap-1">
-                  <span class="font-bold text-xs text-zinc-100 group-hover:text-white">天书指数 ↓</span>
+                  <span class="font-bold text-xs text-zinc-100 group-hover:text-white">天书指数</span>
                   <span class="sort-ind text-zinc-400 text-[10px]">▲</span>
                 </div>
-                <span class="text-[11px] text-emerald-400 font-normal mt-0.5">95% CI · 越低越好</span>
+                <span class="text-[11px] text-emerald-400 font-normal mt-0.5">越低越好</span>
               </div>
             </th>
             {head_cells}
@@ -638,10 +638,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         <td class="px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort">${{item.effort}}</td>
         <td class="px-3 py-3.5 text-center"><span class="tier-pill ${{item.tier_cls}} text-xs font-semibold px-2.5 py-1 rounded-full">${{item.tier}}</span></td>
         <td class="px-4 py-3.5 text-right">
-          <div class="flex items-baseline justify-end gap-2">
-            <span class="font-mono text-lg font-bold text-zinc-50">${{item.tshu_score.toFixed(2)}}</span>
-            <span class="font-mono text-xs text-zinc-400">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</span>
-          </div>
+          <span class="font-mono text-lg font-bold text-zinc-50" title="95% 置信区间: [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]">${{item.tshu_score.toFixed(2)}}</span>
         </td>
         ${{detailedTds}}
       `;
@@ -695,7 +692,10 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         drawerTr.innerHTML = `
           <td colspan="11" class="p-5 bg-zinc-950">
             <div class="max-w-4xl mx-auto">
-              <div class="font-bold text-sm text-zinc-200 mb-2.5">${{item.name}} · 六维病灶诊断</div>
+              <div class="flex items-baseline justify-between mb-2.5">
+                <div class="font-bold text-sm text-zinc-200">${{item.name}} · 六维病灶诊断</div>
+                <div class="text-xs font-mono text-zinc-400">天书指数: <span class="text-zinc-200 font-bold">${{item.tshu_score.toFixed(2)}}</span> <span class="text-zinc-400">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</span></div>
+              </div>
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">${{cardsHtml}}</div>
               ${{badcasesHtml}}
             </div>
