@@ -52,7 +52,7 @@ uvx --from git+https://github.com/DBinK/TshuBench tshu score \
 
 ### 方式二：交给您的 AI Agent 自动完成
 
-直接将 [docs/PROMPT_FOR_AGENTS.md](docs/PROMPT_FOR_AGENTS.md) 中的提示词复制给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等），它会自动引导完成 API 密钥确认、评测执行、完整性校验与 PR 准备。
+直接将 [docs/agent-prompt.md](docs/agent-prompt.md) 中的提示词复制给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等），它会自动引导完成 API 密钥确认、评测执行、完整性校验与 PR 准备。
 
 ## 5. 自动化门禁（CI）
 

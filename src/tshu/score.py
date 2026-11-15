@@ -502,7 +502,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           <span>GitHub</span>
           <span class="text-zinc-500">↗</span>
         </a>
-        <a href="https://github.com/DBinK/TshuBench/blob/main/docs/%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88.md" target="_blank" rel="noopener" class="border border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-500 text-zinc-200 hover:text-white px-3.5 sm:px-4 text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 transition-colors h-9 sm:h-10">
+        <a href="https://github.com/DBinK/TshuBench/blob/main/docs/methodology.md" target="_blank" rel="noopener" class="border border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-500 text-zinc-200 hover:text-white px-3.5 sm:px-4 text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 transition-colors h-9 sm:h-10">
           <span>评测方案</span>
           <span class="text-zinc-500">↗</span>
         </a>
