@@ -520,7 +520,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     <p class="text-sm text-zinc-400 font-sans py-3">中文大模型工程回答「说人话」程度评测基准 · 基于确定性 AST 规则</p>
 
     <!-- Analytical Terminal Spec Strip -->
-    <div class="grid grid-cols-2 md:grid-cols-4 border-x border-b border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
+    <div class="grid grid-cols-2 md:grid-cols-4 border border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
       <div class="p-3.5 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">最近更新</div>
         <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{date_str}</div>
