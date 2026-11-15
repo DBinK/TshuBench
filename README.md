@@ -3,7 +3,7 @@
 > **量化大模型中文工程回答中的表达负担与结构膨胀**  
 > 基于确定性 AST 语法树与词法规则，无 LLM 裁判（Zero-LLM），100% 可复现。
 
-**在线交互榜单**：[https://dbink.github.io/TshuBench/](https://dbink.github.io/TshuBench/)
+**在线交互榜单**：[https://tshu.dbink.top/](https://tshu.dbink.top/)
 
 ---
 
