@@ -54,7 +54,14 @@ uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu score \
 
 直接将 [README 快速上手](README.md#方式一ai-agent-自动化评测推荐) 中的提示词复制给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等），它会自动安装 `tshu-eval` 技能并完成 API 密钥确认、评测执行、完整性校验与 PR 准备。
 
-## 5. 自动化门禁（CI）
+## 5. PR 正文规范
+
+提交 PR 时，请按 [PR 模板](.github/pull_request_template.md) 如实填写以下信息（新建 PR 时会自动带出）：
+- **模型与参数**：`provider/model` 标识、推理档位及非默认采样参数。
+- **来源与供应商**：实际调用的 API 供应商/渠道（如官方 API、OpenRouter、本地部署等）；若为开源或本地部署模型，需注明权重来源与量化精度。
+- **自检清单**：确认已通过本地校验且未改动无关文件。
+
+## 6. 自动化门禁（CI）
 
 提交 PR 后，GitHub Actions 将自动执行以下检查：
 - 校验 PR 仅在 `runs/` 下新增 `.jsonl` 文件，禁止修改或删除已有样本，且未篡改核心源码与题库。
