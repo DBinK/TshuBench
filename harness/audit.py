@@ -41,6 +41,22 @@ class PairedResult:
     model_b: str
     diff: float
     p_value: float
+    p_holm: float
+
+
+def holm_adjust(p_values: list[float]) -> list[float]:
+    """对一组原始 p 值执行 Holm-Bonferroni 多重比较校正。"""
+    m = len(p_values)
+    if m == 0:
+        return []
+    indexed = sorted(enumerate(p_values), key=lambda item: item[1])
+    adjusted = [0.0] * m
+    running_max = 0.0
+    for rank, (orig_idx, p) in enumerate(indexed):
+        val = min(1.0, p * (m - rank))
+        running_max = max(running_max, val)
+        adjusted[orig_idx] = round(running_max, 4)
+    return adjusted
 
 
 def pearson_r(xs: list[float], ys: list[float]) -> float:
@@ -196,15 +212,27 @@ def compute_audit_report(
         },
     }
 
-    # 2. 实际方差贡献与相关矩阵 / PCA
+    # 2. 加权标准差份额、协方差方差分摊与相关矩阵 / PCA
     stds = {k: statistics.stdev([r[k] for r in model_means]) for k in METRIC_KEYS}
     total_wstd = sum(WEIGHTS[k] * stds[k] for k in METRIC_KEYS) or 1.0
+    tshu_vals = [r["tshu"] for r in model_means]
+    mean_tshu = statistics.mean(tshu_vals)
+    var_tshu = statistics.variance(tshu_vals) or 1.0
+    n_m = len(model_means)
+    cov_shares: dict[str, float] = {}
+    for k in METRIC_KEYS:
+        xs = [r[k] for r in model_means]
+        mx = statistics.mean(xs)
+        cov = sum((x - mx) * (s - mean_tshu) for x, s in zip(xs, tshu_vals)) / max(1, n_m - 1)
+        cov_shares[k] = round(WEIGHTS[k] * cov / var_tshu, 4)
+
     variance_contrib = {
         k: {
             "nominal_weight": WEIGHTS[k],
             "model_std": round(stds[k], 2),
             "weighted_std": round(WEIGHTS[k] * stds[k], 2),
-            "variance_share": round(WEIGHTS[k] * stds[k] / total_wstd, 4),
+            "weighted_std_share": round(WEIGHTS[k] * stds[k] / total_wstd, 4),
+            "cov_var_share": cov_shares[k],
         }
         for k in METRIC_KEYS
     }
@@ -248,22 +276,30 @@ def compute_audit_report(
         r_sb = (2.0 * r_half / (1.0 + r_half)) if (1.0 + r_half) != 0 else 0.0
         split_half[key] = {"r": round(r_half, 4), "r_sb": round(r_sb, 4)}
 
-    # 4. 配对置换检验（相邻名次 & 相对 #1）
-    adjacent_pairs: list[PairedResult] = []
+    # 4. 探索性配对置换检验（相邻名次 & 相对 #1，附 Holm 多重比较校正）
+    adj_raw: list[tuple[int, str, int, str, float, float]] = []
     for idx in range(len(models_sorted) - 1):
         ma, mb = models_sorted[idx], models_sorted[idx + 1]
         diffs = [by_model[mb][t].tshu - by_model[ma][t].tshu for t in task_ids]
-        obs, p_val = paired_permutation_p(diffs, n_perm=n_perm, seed=42 + idx)
-        adjacent_pairs.append(
-            PairedResult(idx + 1, ma, idx + 2, mb, round(obs, 2), round(p_val, 4))
-        )
+        obs, p_val = paired_permutation_p(diffs, n_perm=n_perm, seed=42 + (idx + 1) * 100 + (idx + 2))
+        adj_raw.append((idx + 1, ma, idx + 2, mb, round(obs, 2), round(p_val, 4)))
+    adj_holm = holm_adjust([item[5] for item in adj_raw])
+    adjacent_pairs = [
+        PairedResult(ra, ma, rb, mb, obs, pv, ph)
+        for (ra, ma, rb, mb, obs, pv), ph in zip(adj_raw, adj_holm)
+    ]
 
-    vs_top_pairs: list[PairedResult] = []
+    top_raw: list[tuple[int, str, int, str, float, float]] = []
     top_model = models_sorted[0]
     for idx, mb in enumerate(models_sorted[1:], start=2):
         diffs = [by_model[mb][t].tshu - by_model[top_model][t].tshu for t in task_ids]
-        obs, p_val = paired_permutation_p(diffs, n_perm=n_perm, seed=100 + idx)
-        vs_top_pairs.append(PairedResult(1, top_model, idx, mb, round(obs, 2), round(p_val, 4)))
+        obs, p_val = paired_permutation_p(diffs, n_perm=n_perm, seed=42 + 100 + idx)
+        top_raw.append((1, top_model, idx, mb, round(obs, 2), round(p_val, 4)))
+    top_holm = holm_adjust([item[5] for item in top_raw])
+    vs_top_pairs = [
+        PairedResult(ra, ma, rb, mb, obs, pv, ph)
+        for (ra, ma, rb, mb, obs, pv), ph in zip(top_raw, top_holm)
+    ]
 
     return {
         "n_models": len(models_sorted),
@@ -298,11 +334,12 @@ def print_audit_report(report: dict[str, object]) -> None:
 
     vc: dict[str, dict[str, float]] = report["variance_contrib"]  # type: ignore[assignment]
     sh: dict[str, dict[str, float]] = report["split_half"]  # type: ignore[assignment]
-    t_var = Table(title=f"2. 子指标信度与实际方差贡献（总分 r_SB={sh['tshu']['r_sb']:.4f}）")
+    t_var = Table(title=f"2. 子指标信度、加权标准差份额与方差分摊（总分 r_SB={sh['tshu']['r_sb']:.4f}）")
     t_var.add_column("指标")
     t_var.add_column("标称权重", justify="right")
     t_var.add_column("模型间标准差", justify="right")
-    t_var.add_column("实际方差贡献", justify="right")
+    t_var.add_column("加权标准差份额", justify="right")
+    t_var.add_column("协方差方差分摊", justify="right")
     t_var.add_column("分半信度 r_SB", justify="right")
     for k in METRIC_KEYS:
         item = vc[k]
@@ -310,7 +347,8 @@ def print_audit_report(report: dict[str, object]) -> None:
             k.upper(),
             f"{item['nominal_weight']:.0%}",
             f"{item['model_std']:.2f}",
-            f"{item['variance_share']:.1%}",
+            f"{item['weighted_std_share']:.1%}",
+            f"{item['cov_var_share']:.1%}",
             f"{sh[k]['r_sb']:.4f}",
         )
     rprint(t_var)
@@ -325,17 +363,25 @@ def print_audit_report(report: dict[str, object]) -> None:
     rprint(t_pca)
 
     adj: list[PairedResult] = report["adjacent_pairs"]  # type: ignore[assignment]
-    sig_adj = [p for p in adj if p.p_value < 0.05]
+    sig_adj_raw = [p for p in adj if p.p_value < 0.05]
+    sig_adj_holm = [p for p in adj if p.p_holm < 0.05]
     top_p: list[PairedResult] = report["vs_top_pairs"]  # type: ignore[assignment]
-    first_sig = next((p for p in top_p if p.p_value < 0.05), None)
+    first_raw = next((p for p in top_p if p.p_value < 0.05), None)
+    first_holm = next((p for p in top_p if p.p_holm < 0.05), None)
     rprint(
-        f"[bold]4. 配对置换检验（36 题，10000 次符号置换）：[/bold]"
-        f"相邻名次显著差异 {len(sig_adj)}/{len(adj)} 对；"
+        f"[bold]4. 探索性配对置换检验（36 题，10000 次符号置换）：[/bold]"
+        f"相邻名次未校正 p<0.05 为 {len(sig_adj_raw)}/{len(adj)} 对（Holm 校正后 {len(sig_adj_holm)}/{len(adj)} 对）；"
         + (
-            f"相对 #1 首个显著拉开差距为 #{first_sig.rank_b} {first_sig.model_b} "
-            f"(+{first_sig.diff:.2f}, p={first_sig.p_value:.4f})"
-            if first_sig
-            else "无模型显著高于 #1"
+            f"相对 #1 未校正首个 p<0.05 为 #{first_raw.rank_b} {first_raw.model_b} "
+            f"(+{first_raw.diff:.2f}, p={first_raw.p_value:.4f})，"
+            if first_raw
+            else "未校正无模型显著高于 #1，"
+        )
+        + (
+            f"Holm 校正后首个 p<0.05 为 #{first_holm.rank_b} {first_holm.model_b} "
+            f"(+{first_holm.diff:.2f}, p_holm={first_holm.p_holm:.4f})"
+            if first_holm
+            else "Holm 校正后无模型显著高于 #1"
         )
     )
 

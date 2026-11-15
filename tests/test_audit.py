@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from harness.audit import compute_audit_report, jacobi_pca, paired_permutation_p, pearson_r
+from harness.audit import compute_audit_report, holm_adjust, jacobi_pca, paired_permutation_p, pearson_r
 
 
 def test_pearson_r_basic() -> None:
@@ -31,6 +31,13 @@ def test_paired_permutation_p_detects_clear_difference() -> None:
     obs_null, p_null = paired_permutation_p([1.0, -1.0] * 8, n_perm=1000, seed=42)
     assert obs_null == 0.0
     assert p_null == 1.0
+
+
+def test_holm_adjust() -> None:
+    adj = holm_adjust([0.0344, 0.50, 0.001])
+    assert abs(adj[2] - 0.003) < 1e-4
+    assert abs(adj[0] - 0.0688) < 1e-4
+    assert abs(adj[1] - 0.50) < 1e-4
 
 
 def test_compute_audit_report_on_demo_runs() -> None:
