@@ -385,7 +385,9 @@ def render_html(
         )
 
     data_json = json.dumps(model_entries, ensure_ascii=False)
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_dt = datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %H:%M")
+    date_str = now_dt.strftime("%Y-%m-%d")
 
     metric_header_defs = [
         ("cci", "CCI", "长链推演", "border-l border-zinc-800"),
@@ -514,12 +516,12 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     <!-- Analytical Terminal Spec Strip -->
     <div class="grid grid-cols-2 md:grid-cols-4 border-x border-b border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
       <div class="p-3.5 sm:p-4">
-        <div class="text-zinc-400 text-xs font-sans tracking-wider">分半信度</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">r_SB = 0.968</div>
+        <div class="text-zinc-400 text-xs font-sans tracking-wider">最近更新</div>
+        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{date_str}</div>
       </div>
       <div class="p-3.5 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">参评模型</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">17 款主流模型</div>
+        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{len(ranked)} 款主流模型</div>
       </div>
       <div class="p-3.5 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">评测样本</div>
