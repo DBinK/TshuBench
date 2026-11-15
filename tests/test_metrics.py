@@ -78,6 +78,13 @@ def test_enu_ignores_unix_paths_and_multiline_lists():
     assert multiline < singleline
 
 
+def test_enu_ignores_technical_slashes():
+    tech, _ = score_enu(
+        "设 TZ=Asia/Shanghai 时区，检查 IO/CPU 瓶颈与 Exit Code 1 / 2，使用 goreleaser/goreleaser-action 发布。"
+    )
+    assert tech == 0.0
+
+
 def test_cci_long_clause_and_nesting():
     long_clause = (
         "如果系统在高峰期出现超时那么我们需要考虑如果下游持续不可用并且如果线程池已经打满"

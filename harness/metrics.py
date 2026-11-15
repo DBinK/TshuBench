@@ -191,7 +191,10 @@ SPRAWL_SECTION_RE = re.compile(
     r"常见坑|不推荐的做法|不推荐|例外情况|什么时候不需要|何时不需要|如果不想|顺便提|注意事项|坑点|补充说明"
 )
 EM_DASH = re.compile(r"——|(?<![a-zA-Z0-9-])—(?![a-zA-Z0-9-])")
-PATH_OR_RATIO = re.compile(r"(?<![A-Za-z0-9\u4e00-\u9fff])(?:/[A-Za-z0-9_.*-]+)+/?|\b\d+/\d+\b")
+PATH_OR_RATIO = re.compile(
+    r"(?<![A-Za-z0-9\u4e00-\u9fff])(?:/[A-Za-z0-9_.*-]+)+/?|"
+    r"\b[A-Za-z0-9_.-]+(?:\s*/\s*[A-Za-z0-9_.-]+)+\b"
+)
 INLINE_CODE_RE = re.compile(r"`[^`\n]{1,80}`")
 PAREN_ANNOTATION_RE = re.compile(r"（[^）\n]{1,80}）|\([^)\n]{1,80}\)")
 COT_TRACE_RE = re.compile(
@@ -269,25 +272,25 @@ def score_hed(task: Task, text: str) -> tuple[float, float]:
 
 
 def score_enu(text: str) -> tuple[float, float]:
-    """M3 报菜名与信息过载：顿号斜杠堆砌 + 单句连发密度 + 符号与行内代码高密压缩。"""
+    """M3 报菜名与信息过载：顿号斜杠堆砌 + 单句连发密度 + 行内代码与分号压缩。"""
     prose = PATH_OR_RATIO.sub(" ", strip_code(text))
     n = char_len(prose)
     if n == 0:
         return 0.0, 0.0
     marks = prose.count("、") + prose.count("/")
-    rate = per_1000(marks, n, floor=150)
+    rate = per_1000(marks, n, floor=250)
     sentences = split_sentences(prose)
-    bursts = sum(1 for s in sentences if s.count("、") >= 3 or s.count("/") >= 2)
-    burst_rate = per_1000(bursts, n, floor=200)
+    bursts = sum(1 for s in sentences if s.count("、") >= 4 or s.count("/") >= 3)
+    burst_rate = per_1000(bursts, n, floor=250)
 
     raw_no_fence = FENCED_CODE.sub(" ", text)
     code_spans = len(INLINE_CODE_RE.findall(raw_no_fence))
     semis = prose.count("；") + prose.count(";")
     han = max(1, han_len(prose))
-    pack_rate = (code_spans + marks + semis * 2) * 1000.0 / max(150, han)
-    pack_comp = clamp((pack_rate - 50.0) / 45.0)
+    pack_rate = (code_spans * 0.6 + semis * 2.5) * 1000.0 / max(300, han)
+    pack_comp = clamp((pack_rate - 45.0) / 50.0)
 
-    raw = clamp((rate - 6.0) / 22.0) * 50.0 + clamp(burst_rate / 4.5) * 25.0 + pack_comp * 35.0
+    raw = clamp((rate - 8.0) / 24.0) * 55.0 + clamp(burst_rate / 4.5) * 25.0 + pack_comp * 25.0
     raw = min(100.0, raw)
     return round(raw, 2), raw
 
