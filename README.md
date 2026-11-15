@@ -36,6 +36,8 @@
 
 ## 最新评测战况（V3 榜单）
 
+> 🌐 **在线交互榜单**：[https://dbink.github.io/TshuBench/](https://dbink.github.io/TshuBench/)
+
 基于 17 款主流模型路由、每款完成 36 题全量采样（共 612 条真实样本），综合总分分半信度达到 **0.968**。
 
 > [!NOTE]
