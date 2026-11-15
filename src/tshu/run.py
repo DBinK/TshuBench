@@ -14,12 +14,22 @@ import hashlib
 import json
 import os
 import re
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
 import httpx
 from loguru import logger
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from tshu.models import Sample, Task
 from tshu.score import load_tasks
@@ -230,23 +240,39 @@ async def execute_live(
     selected = list(tasks.values())[:limit] if limit else list(tasks.values())
     resolved_date = sampled_at or datetime.now().strftime("%Y-%m-%d")
 
-    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
-        async def worker(task: Task) -> Sample:
-            async with semaphore:
-                return await call_once(
-                    client,
-                    base_url,
-                    api_key,
-                    model,
-                    task,
-                    temperature,
-                    max_tokens,
-                    reasoning_effort,
-                    suite_hash=suite_hash,
-                    sampled_at=resolved_date,
-                )
+    disable_progress = (not sys.stderr.isatty()) or bool(os.environ.get("CI"))
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]{task.fields[model]}[/bold cyan]"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        TextColumn("[dim]{task.fields[current_task]}[/dim]"),
+        disable=disable_progress,
+        transient=True,
+    ) as progress:
+        pbar = progress.add_task("eval", total=len(selected), model=model, current_task="准备中")
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+            async def worker(task: Task) -> Sample:
+                async with semaphore:
+                    progress.update(pbar, current_task=task.id)
+                    sample = await call_once(
+                        client,
+                        base_url,
+                        api_key,
+                        model,
+                        task,
+                        temperature,
+                        max_tokens,
+                        reasoning_effort,
+                        suite_hash=suite_hash,
+                        sampled_at=resolved_date,
+                    )
+                    progress.advance(pbar)
+                    return sample
 
-        samples = await asyncio.gather(*(worker(t) for t in selected))
+            samples = await asyncio.gather(*(worker(t) for t in selected))
     write_jsonl(Path(out), list(samples))
 
 
