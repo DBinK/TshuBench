@@ -3,10 +3,10 @@ from harness.score import compute_bootstrap_ci, primary_profile, render_html, re
 
 
 def test_classify_tier():
-    assert classify_tier(9.5) == "T1 · 人话级"
-    assert classify_tier(11.0) == "T2 · 黑话级"
-    assert classify_tier(14.99) == "T2 · 黑话级"
-    assert classify_tier(15.0) == "T3 · 天书级"
+    assert classify_tier(7.99) == "T1 · 人话级"
+    assert classify_tier(8.0) == "T2 · 黑话级"
+    assert classify_tier(11.99) == "T2 · 黑话级"
+    assert classify_tier(12.0) == "T3 · 天书级"
 
 
 def test_primary_profile_picks_top_metrics():

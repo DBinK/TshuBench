@@ -50,7 +50,7 @@
   {
     "model": "auto/deepseek-v4.1-flash",
     "reasoning_effort": "low",
-    "tier": "T2 · 黑话级",
+    "tier": "T3 · 天书级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 14.38,
@@ -242,7 +242,7 @@
   {
     "model": "auto/minimax-m3.1-flash",
     "reasoning_effort": "low",
-    "tier": "T2 · 黑话级",
+    "tier": "T3 · 天书级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 13.39,
@@ -338,7 +338,7 @@
   {
     "model": "codex/gpt-6.1-sol",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 10.95,
@@ -386,7 +386,7 @@
   {
     "model": "codex/gpt-6.1-terra",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 9.98,
@@ -434,7 +434,7 @@
   {
     "model": "opencode-go/glm-5.3-flash",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 8.5,
@@ -674,7 +674,7 @@
   {
     "model": "opencode-zen/glm-5.3",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 8.28,
@@ -722,7 +722,7 @@
   {
     "model": "opencode-zen/qwen3.8-flash",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 8.78,
@@ -770,7 +770,7 @@
   {
     "model": "opencode-zen/qwen3.8-max",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
     "route_note": "",
     "tshu_score": 9.3,
