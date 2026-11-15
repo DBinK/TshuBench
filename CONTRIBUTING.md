@@ -17,11 +17,11 @@ runs/<provider>/<model_slug>_<effort>.jsonl
 ```
 
 - `<provider>`：模型厂商或标准聚合路由名（如 `anthropic`、`openai`、`google`、`deepseek`、`qwen` 等，全小写）。
-- `<model_slug>`：模型标识，斜杠或特殊字符替换为短横线 `-`（如 `deepseek-v3.2`）。
+- `<model_slug>`：模型标识，斜杠或特殊字符替换为短横线 `-`（如 `deepseek-v4.1-flash`）。
 - `<effort>`：思考档位（如 `minimal`、`low`、`medium`、`high`、`none`）。
 
 示例：
-- `runs/deepseek/deepseek-v3.2_low.jsonl`
+- `runs/deepseek/deepseek-v4.1-flash_low.jsonl`
 - `runs/google/gemini-4-argon_medium.jsonl`
 
 ## 3. 多思考档位归并规则
