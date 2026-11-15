@@ -625,6 +625,18 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     </div>
   </div>
 
+  <!-- Contribute via AI Agent -->
+  <div class="mt-6 border border-zinc-800 bg-zinc-950 p-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+      <div class="font-mono text-xs text-zinc-200 font-bold">// 贡献评测结果：复制以下 Prompt 发给你的 AI 编程助手（Claude Code / Cursor / Antigravity 等）</div>
+      <button id="copy-agent-prompt" type="button" class="self-start sm:self-auto px-2.5 py-1 text-xs font-mono border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer">复制 Prompt</button>
+    </div>
+    <pre id="agent-prompt-text" class="bg-black border border-zinc-800/80 p-3 text-xs font-mono text-zinc-300 overflow-x-auto leading-relaxed">请帮我评测模型 [请在此填写模型 ID，如 deepseek/deepseek-v4.1-flash]，并准备提交到 TshuBench（天书榜）：
+
+1. 运行 `npx skills add DBinK/TshuBench` 安装 `tshu-eval` 技能。
+2. 加载 `tshu-eval` 技能并严格按照其中的规范与步骤执行评测、校验与 PR 准备。</pre>
+  </div>
+
   <!-- Footer -->
   <footer class="mt-8 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-zinc-500">
     <div>天书榜 V3 · 评测样本 N=612 · 更新时间 {now_str}</div>
@@ -901,6 +913,17 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
   render();
 }})();
 </script>
+  <script>
+  document.getElementById('copy-agent-prompt')?.addEventListener('click', function() {{
+    const text = document.getElementById('agent-prompt-text')?.innerText || '';
+    navigator.clipboard?.writeText(text).then(() => {{
+      const btn = this;
+      const old = btn.textContent;
+      btn.textContent = '已复制 ✓';
+      setTimeout(() => {{ btn.textContent = old; }}, 1800);
+    }});
+  }});
+  </script>
 </body>
 </html>
 """
