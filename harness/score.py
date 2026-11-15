@@ -313,7 +313,7 @@ def render_html(reports: list[ModelReport]) -> str:
         model_entries.append(entry)
 
         # Static row generation for tests & non-JS fallback
-        cells = "".join(f"<td class='px-3 py-3.5 text-right font-mono text-sm font-semibold text-zinc-200 {('border-l border-zinc-800' if k == 'cci' else '')}'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
+        cells = "".join(f"<td class='px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-200 {('border-l border-zinc-800' if k == 'cci' else '')}'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
         route_badge = f" <span class='text-xs text-zinc-400 font-mono'>({route_note_text})</span>" if route_note_text else ""
         medal = "🥇 " if i == 1 else ("🥈 " if i == 2 else ("🥉 " if i == 3 else ""))
         static_rows.append(
@@ -325,7 +325,7 @@ def render_html(reports: list[ModelReport]) -> str:
             f"</div><div class='text-xs font-mono text-zinc-400 mt-1 truncate'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
             f"<td class='px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort'>{effort_text}</td>"
             f"<td class='px-3 py-3.5 text-center'><span class='tier-tag {tier_cls} text-xs font-mono font-semibold px-2 py-0.5 border'>{tier_str}</span></td>"
-            f"<td class='px-3 py-3.5 text-right border-l border-zinc-800'>"
+            f"<td class='px-3 py-3.5 text-center border-l border-zinc-800'>"
             f"<span class='font-mono text-lg font-bold text-zinc-50' title='95% 置信区间: [{report.ci_lower:.1f}, {report.ci_upper:.1f}]'>{report.tshu_score:.2f}</span>"
             f"</td>"
             f"{cells}</tr>"
@@ -343,13 +343,10 @@ def render_html(reports: list[ModelReport]) -> str:
         ("hed", "HED", "防御叠甲", ""),
     ]
     head_cells = "".join(
-        f"<th data-sort='{k}' class='py-3.5 px-3 text-right cursor-pointer hover:text-white select-none transition-colors group {border_cls}'>"
-        f"<div class='inline-flex flex-col items-end'>"
-        f"<div class='flex items-center gap-1'>"
-        f"<span class='font-bold tracking-wider text-xs text-zinc-200 group-hover:text-white font-mono'>{code}</span>"
+        f"<th data-sort='{k}' title='{code}' class='py-3.5 px-2 text-center cursor-pointer hover:text-white select-none transition-colors group {border_cls}'>"
+        f"<div class='inline-flex items-center justify-center gap-1'>"
+        f"<span class='font-semibold text-xs text-zinc-200 group-hover:text-white whitespace-nowrap'>{desc}</span>"
         f"<span class='sort-ind text-zinc-400 text-xs'></span>"
-        f"</div>"
-        f"<span class='text-xs font-normal text-zinc-400 mt-0.5'>{desc}</span>"
         f"</div></th>"
         for k, code, desc, border_cls in metric_header_defs
     )
@@ -446,18 +443,18 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
       <div>
         <div class="flex items-center gap-3">
-          <span class="bg-zinc-100 text-zinc-950 font-mono font-black text-xs px-2.5 py-0.5 tracking-wider">BENCHMARK</span>
-          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-mono">TSHUBENCH // 天书榜</h1>
+          <span class="bg-zinc-100 text-zinc-950 font-mono font-black text-xs px-2.5 py-0.5 tracking-wider">基准评测</span>
+          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-mono">天书榜 · TshuBench</h1>
         </div>
         <p class="text-sm sm:text-base text-zinc-400 font-sans mt-2">量化中文大模型工程回答中的“不说人话”与结构膨胀 · V3 确定性 AST 评测</p>
       </div>
       <div class="flex items-center gap-2.5">
         <a href="https://github.com/DBinK/TshuBench" target="_blank" rel="noopener" class="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3.5 py-2 text-xs sm:text-sm font-mono inline-flex items-center gap-1.5 transition-colors">
-          <span>GITHUB</span>
+          <span>GitHub 仓库</span>
           <span class="text-zinc-500">↗</span>
         </a>
         <a href="https://github.com/DBinK/TshuBench/blob/main/docs/%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88.md" target="_blank" rel="noopener" class="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3.5 py-2 text-xs sm:text-sm font-mono inline-flex items-center gap-1.5 transition-colors">
-          <span>METHODOLOGY</span>
+          <span>评测方案</span>
           <span class="text-zinc-500">↗</span>
         </a>
       </div>
@@ -466,29 +463,29 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     <!-- Analytical Terminal Spec Strip -->
     <div class="grid grid-cols-2 md:grid-cols-4 border-x border-b border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
       <div class="p-3.5 sm:p-4">
-        <div class="text-zinc-400 text-xs font-mono uppercase tracking-wider">Split-Half Reliability</div>
+        <div class="text-zinc-400 text-xs font-sans tracking-wider">分半信度</div>
         <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">r_SB = 0.968</div>
       </div>
       <div class="p-3.5 sm:p-4">
-        <div class="text-zinc-400 text-xs font-mono uppercase tracking-wider">Evaluated Models</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">17 Frontier Routes</div>
+        <div class="text-zinc-400 text-xs font-sans tracking-wider">参评模型</div>
+        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">17 款主流模型</div>
       </div>
       <div class="p-3.5 sm:p-4">
-        <div class="text-zinc-400 text-xs font-mono uppercase tracking-wider">Benchmark Dataset</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">36 Scenarios / 612 Runs</div>
+        <div class="text-zinc-400 text-xs font-sans tracking-wider">评测样本</div>
+        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">36 个场景 · 612 次评测</div>
       </div>
       <div class="p-3.5 sm:p-4">
-        <div class="text-zinc-400 text-xs font-mono uppercase tracking-wider">Scoring Engine</div>
-        <div class="text-emerald-400 font-bold text-base sm:text-lg font-mono mt-1">AST Deterministic (Zero-LLM)</div>
+        <div class="text-zinc-400 text-xs font-sans tracking-wider">打分引擎</div>
+        <div class="text-emerald-400 font-bold text-base sm:text-lg font-mono mt-1">AST 确定性规则（无 LLM 裁判）</div>
       </div>
     </div>
 
     <!-- Notice Strip (Font-sans, clear readable text, no SimSun fallback!) -->
     <div class="border-x border-b border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 font-sans leading-relaxed flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <span class="text-emerald-400 font-bold font-mono mr-1.5">[INFO]</span> 本榜采用反向扣分制（分数越低越讲人话，0 分为未检出病灶）。点击任意模型行可展开病灶诊断与典型样本。
+        <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜采用反向扣分制（分数越低越讲人话，0 分为未检出病灶）。点击任意模型行可展开病灶诊断与典型样本。
       </div>
-      <div class="text-zinc-500 text-xs font-mono whitespace-nowrap">STATUS: PUBLIC / V3 VERIFIED</div>
+      <div class="text-zinc-500 text-xs font-mono whitespace-nowrap">状态：公开评测 · V3 校验通过</div>
     </div>
   </header>
 
@@ -529,43 +526,39 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           <col style="width: 90px;">   <!-- 3: 思考档位 -->
           <col style="width: 100px;">  <!-- 4: 梯队 -->
           <col style="width: 108px;">  <!-- 5: 综合得分 / 天书指数: 严格固定 108px，绝不被拉宽 -->
-          <col style="width: 80px;">   <!-- 6: CCI -->
-          <col style="width: 80px;">   <!-- 7: FMT -->
-          <col style="width: 80px;">   <!-- 8: ENU -->
-          <col style="width: 80px;">   <!-- 9: TIC -->
-          <col style="width: 80px;">   <!-- 10: CVD -->
-          <col style="width: 80px;">   <!-- 11: HED -->
+          <col style="width: 80px;">   <!-- 6: 长链推演 -->
+          <col style="width: 80px;">   <!-- 7: 排版膨胀 -->
+          <col style="width: 80px;">   <!-- 8: 报菜名 -->
+          <col style="width: 80px;">   <!-- 9: 套话模板 -->
+          <col style="width: 80px;">   <!-- 10: 决断推延 -->
+          <col style="width: 80px;">   <!-- 11: 防御叠甲 -->
         </colgroup>
         <thead>
           <!-- Top Tier: Category Grouping -->
-          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs font-mono tracking-wider uppercase text-zinc-400 select-none">
-            <th colspan="4" class="py-3 px-4 text-left font-semibold">模型基础规格 (Model Spec)</th>
-            <th class="py-3 px-3 text-right font-semibold text-emerald-400 border-l border-zinc-800">综合得分</th>
-            <th colspan="6" class="py-3 px-3 text-center font-semibold border-l border-zinc-800">六维病灶细分扣分（百分制 · Dimension Penalties）</th>
+          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs font-mono tracking-wider text-zinc-400 select-none">
+            <th colspan="4" class="py-3 px-4 text-left font-semibold">模型基础规格</th>
+            <th class="py-3 px-3 text-center font-semibold text-emerald-400 border-l border-zinc-800">综合得分</th>
+            <th colspan="6" class="py-3 px-3 text-center font-semibold border-l border-zinc-800">六维病灶细分扣分（百分制）</th>
           </tr>
           <!-- Second Tier: Columns -->
           <tr class="border-b border-zinc-800 bg-zinc-950 text-xs text-zinc-300">
             <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white select-none">
-              <span class="block font-semibold">#</span>
-              <span class="block text-xs text-zinc-500 font-mono font-normal mt-0.5 uppercase">Rank</span>
+              <span class="font-semibold text-xs">#</span>
             </th>
             <th data-sort="name" class="py-3.5 px-4 text-zinc-200 font-semibold cursor-pointer hover:text-white select-none">
               <div class="flex items-center gap-1">
                 <span class="font-semibold text-xs">模型与厂商</span>
                 <span class="sort-ind text-zinc-400 text-xs"></span>
               </div>
-              <span class="text-xs text-zinc-500 font-mono font-normal block mt-0.5 uppercase">Model / Provider</span>
             </th>
             <th data-sort="effort" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
-              <span class="block font-semibold text-xs">思考档位</span>
-              <span class="block text-xs text-zinc-500 font-mono font-normal mt-0.5 uppercase">Effort</span>
+              <span class="font-semibold text-xs">思考档位</span>
             </th>
             <th data-sort="tier" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
-              <span class="block font-semibold text-xs">梯队</span>
-              <span class="block text-xs text-zinc-500 font-mono font-normal mt-0.5 uppercase">Tier</span>
+              <span class="font-semibold text-xs">梯队</span>
             </th>
-            <th data-sort="tshu_score" class="py-3.5 px-3 text-right cursor-pointer hover:text-white select-none sort-active group border-l border-zinc-800">
-              <div class="inline-flex flex-col items-end">
+            <th data-sort="tshu_score" class="py-3.5 px-3 text-center cursor-pointer hover:text-white select-none sort-active group border-l border-zinc-800">
+              <div class="inline-flex flex-col items-center">
                 <div class="flex items-center gap-1">
                   <span class="font-bold text-xs text-zinc-100 group-hover:text-white">天书指数</span>
                   <span class="sort-ind text-zinc-400 text-xs">▲</span>
@@ -585,8 +578,8 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
 
   <!-- Footer -->
   <footer class="mt-8 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-zinc-500">
-    <div>TSHUBENCH V3 · DATASET N=612 · UPDATED {now_str}</div>
-    <div>ZERO-LLM DETERMINISTIC AST ENGINE · MIT LICENSE</div>
+    <div>天书榜 V3 · 评测样本 N=612 · 更新时间 {now_str}</div>
+    <div>无 LLM 裁判 AST 确定性引擎 · MIT 开源协议</div>
   </footer>
 </div>
 
@@ -667,7 +660,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       for (const k of ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed']) {{
         const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
         const borderCls = k === 'cci' ? 'border-l border-zinc-800' : '';
-        detailedTds += `<td class="px-3 py-3.5 text-right font-mono text-sm font-semibold text-zinc-200 ${{borderCls}}">${{val}}</td>`;
+        detailedTds += `<td class="px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-200 ${{borderCls}}">${{val}}</td>`;
       }}
 
       tr.innerHTML = `
@@ -681,7 +674,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         </td>
         <td class="px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort">${{item.effort}}</td>
         <td class="px-3 py-3.5 text-center"><span class="tier-tag ${{item.tier_cls}} text-xs font-mono font-semibold px-2 py-0.5 border">${{item.tier}}</span></td>
-        <td class="px-3 py-3.5 text-right border-l border-zinc-800">
+        <td class="px-3 py-3.5 text-center border-l border-zinc-800">
           <span class="font-mono text-lg font-bold text-zinc-50" title="95% 置信区间: [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]">${{item.tshu_score.toFixed(2)}}</span>
         </td>
         ${{detailedTds}}
@@ -702,12 +695,12 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         drawerTr.className = 'bg-black border-b border-zinc-800';
         let cardsHtml = '';
         const metricLabels = {{
-          cci: ['CCI 长链推演', '长复合句与改口推演痕迹 (24%)'],
-          fmt: ['FMT 排版膨胀', 'Markdown 结构强迫与支线清单 (16%)'],
-          enu: ['ENU 报菜名', '顿号斜杠与高密符号压缩 (20%)'],
-          tic: ['TIC 套话模板', '套话抽动与公文式结构 (16%)'],
-          cvd: ['CVD 决断推延', '首句打太极，结论后置 (12%)'],
-          hed: ['HED 防御叠甲', '逢人便叠甲，常识过度免责 (12%)']
+          cci: ['长链推演', '长复合句与改口推演痕迹 (24%)'],
+          fmt: ['排版膨胀', 'Markdown 结构强迫与支线清单 (16%)'],
+          enu: ['报菜名', '顿号斜杠与高密符号压缩 (20%)'],
+          tic: ['套话模板', '套话抽动与公文式结构 (16%)'],
+          cvd: ['决断推延', '首句打太极，结论后置 (12%)'],
+          hed: ['防御叠甲', '逢人便叠甲，常识过度免责 (12%)']
         }};
         for (const [k, [lbl, desc]] of Object.entries(metricLabels)) {{
           const val = item.metrics[k] !== undefined ? item.metrics[k] : 0;
@@ -724,12 +717,12 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         if (item.worst && item.worst.length > 0) {{
           badcasesHtml = `
             <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
-              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 典型最高扣分题 (Badcases)</div>
+              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 典型高扣分样本</div>
           `;
           item.worst.forEach(w => {{
             badcasesHtml += `
               <div class="border-t border-zinc-800/80 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 text-sm">
-                <div class="text-red-400 font-semibold mb-1 font-mono text-xs">TASK: [${{w.task_id}}] · PENALTY: ${{w.score}}</div>
+                <div class="text-red-400 font-semibold mb-1 font-mono text-xs">用例：[${{w.task_id}}] · 扣分：${{w.score}}</div>
                 <div class="text-zinc-300 font-mono text-xs sm:text-sm leading-relaxed bg-zinc-900/60 border border-zinc-800/60 p-3 whitespace-pre-wrap">${{w.response}}</div>
               </div>
             `;
@@ -741,8 +734,8 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           <td colspan="11" class="p-6 bg-black">
             <div class="max-w-5xl mx-auto">
               <div class="flex flex-col sm:flex-row sm:items-baseline justify-between border-b border-zinc-800 pb-3 mb-4">
-                <div class="font-bold text-base text-zinc-100 font-mono tracking-tight">// ${{item.name}} · 六维病灶诊断矩阵</div>
-                <div class="text-xs font-mono text-zinc-400 mt-1 sm:mt-0">天书指数：<span class="text-emerald-400 font-bold text-sm">${{item.tshu_score.toFixed(2)}}</span> · 95% CI [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</div>
+                <div class="font-bold text-base text-zinc-100 font-mono tracking-tight">// ${{item.name}} · 六维病灶诊断</div>
+                <div class="text-xs font-mono text-zinc-400 mt-1 sm:mt-0">天书指数：<span class="text-emerald-400 font-bold text-sm">${{item.tshu_score.toFixed(2)}}</span> · 95% 置信区间 [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</div>
               </div>
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">${{cardsHtml}}</div>
               ${{badcasesHtml}}
