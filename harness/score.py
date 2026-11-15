@@ -89,6 +89,21 @@ def compute_bootstrap_ci(
     return round(lower, 2), round(upper, 2)
 
 
+def _build_route_note(known: list[Sample], total_tasks: int) -> str:
+    notes: list[str] = []
+    if total_tasks > 1 and len(known) < total_tasks:
+        notes.append(f"{len(known)}/{total_tasks}题")
+    route_counts: dict[str, int] = {}
+    for sample in known:
+        rm = (sample.response_model or "").strip()
+        if rm:
+            route_counts[rm] = route_counts.get(rm, 0) + 1
+    if len(route_counts) > 1:
+        counts = sorted(route_counts.values(), reverse=True)
+        notes.append("混合路由(" + "+".join(str(c) for c in counts) + ")")
+    return " · ".join(notes)
+
+
 def score_model(
     model: str, samples: list[Sample], tasks: dict[str, Task], n_bootstrap: int = 1000
 ) -> ModelReport:
@@ -98,6 +113,7 @@ def score_model(
     known = [s for s in samples if s.task_id in tasks]
     if len(known) < len(samples):
         logger.warning(f"{model} 有 {len(samples) - len(known)} 条样本题目不在题库中，已跳过")
+    route_note = _build_route_note(known, len(tasks))
 
     entropy = opening_entropy([s.response for s in known])
     opening_penalty = max(0.0, 1.0 - entropy)
@@ -115,6 +131,7 @@ def score_model(
             opening_entropy=entropy,
             tier=classify_tier(0.0),
             reasoning_effort=effort,
+            route_note=route_note,
         )
 
     averages = {
@@ -147,6 +164,7 @@ def score_model(
         body_score=body_s,
         tier=classify_tier(ts),
         reasoning_effort=effort,
+        route_note=route_note,
     )
 
 
@@ -170,7 +188,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
     rows = [
         "| {} | {} | {} | {} | **{:.2f}** [{:.2f}, {:.2f}] | {:.2f} | {:.2f} | {} | {} |".format(
             i,
-            r.model,
+            f"{r.model} *({r.route_note})*" if r.route_note else r.model,
             r.reasoning_effort or "默认",
             r.tier or classify_tier(r.tshu_score),
             r.tshu_score,
@@ -199,7 +217,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
             "",
             f"## {report.model}",
             "",
-            f"- 样本数：{report.n_samples}",
+            f"- 样本数：{report.n_samples}" + (f"（{report.route_note}）" if report.route_note else ""),
             f"- 思考档位：{report.reasoning_effort or '默认'}",
             f"- 梯队：{report.tier or classify_tier(report.tshu_score)}",
             f"- TshuScore：{report.tshu_score:.2f} (95% CI: [{report.ci_lower:.2f}, {report.ci_upper:.2f}])",
@@ -225,8 +243,11 @@ def render_html(reports: list[ModelReport]) -> str:
         tier_text = html.escape(report.tier or classify_tier(report.tshu_score))
         ci_text = f"<span class=ci>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
         profile_text = html.escape(primary_profile(report.metrics))
+        model_label = html.escape(report.model)
+        if report.route_note:
+            model_label += f" <span class=ci>({html.escape(report.route_note)})</span>"
         rows.append(
-            f"<tr><td class=rank>{i}</td><td class=model>{html.escape(report.model)}</td>"
+            f"<tr><td class=rank>{i}</td><td class=model>{model_label}</td>"
             f"<td class=effort>{effort_text}</td><td class=tier>{tier_text}</td>"
             f"<td class=score><span class=bar style='width:{width:.1f}%'></span>"
             f"<b>{report.tshu_score:.1f}</b> {ci_text}</td>"
@@ -297,6 +318,7 @@ def run_scoring(
             "reasoning_effort": r.reasoning_effort or "默认",
             "tier": r.tier or classify_tier(r.tshu_score),
             "n_samples": r.n_samples,
+            "route_note": r.route_note,
             "tshu_score": r.tshu_score,
             "open_score": r.open_score,
             "body_score": r.body_score,

@@ -98,12 +98,6 @@ CRISP_OPENERS = (
     "大概率不能",
     "大概率不会",
     "不正确",
-    "先说结论",
-    "结论：",
-    "结论是",
-    "直接说结论",
-    "简短回答",
-    "一句话",
     "先止血",
     "先止损",
     "先回滚",
@@ -131,11 +125,14 @@ CRISP_OPENERS = (
     "根源一样",
     "多线程并发",
     "最省事",
-    "这里提供",
-    "这里为你",
-    "这里为您",
-    "直接回答",
-    "简短的回答",
+    "版本一",
+    "版本 1",
+    "版本1",
+    "简短版",
+    "群发版",
+)
+META_LABEL_RE = re.compile(
+    r"^(?:先说结论|直接说结论|结论是|结论|简短的回答是|简短回答是|简短的回答|简短回答|直接回答|一句话总结|一句话)[：:，,\s]*"
 )
 
 JARGON = (
@@ -198,7 +195,7 @@ PATH_OR_RATIO = re.compile(r"(?<![A-Za-z0-9\u4e00-\u9fff])(?:/[A-Za-z0-9_.*-]+)+
 INLINE_CODE_RE = re.compile(r"`[^`\n]{1,80}`")
 PAREN_ANNOTATION_RE = re.compile(r"（[^）\n]{1,80}）|\([^)\n]{1,80}\)")
 COT_TRACE_RE = re.compile(
-    r"更准确地说|换句话说|也就是说|反过来|退一步|归根结底|先看|再看|顺带|中途|排除|推翻|坐实|意味着|即：|即\s|反之"
+    r"更准确地说|换句话说|也就是说|反过来|退一步|归根结底|先看|再看|顺带|中途|排除|推翻|坐实"
 )
 BARE_REF_RE = re.compile(
     r"(?<![#\n\r\*-])\s*(?:"
@@ -229,18 +226,20 @@ def _first_index(text: str, anchors: list[str]) -> int | None:
 
 
 def score_cvd(task: Task, text: str) -> tuple[float, float]:
-    """M1 首句决断延迟：按首段字符偏移与直判句式打分。"""
+    """M1 首句决断延迟：剥离空泛结论标签后，按首段字符偏移与直判句式打分。"""
     if not text:
         return 100.0, 200.0
-    head = text.lstrip("#* \t\r\n")[:70]
+    stripped = text.lstrip("#* \t\r\n")
+    stripped = META_LABEL_RE.sub("", stripped).lstrip("#* \t\r\n")
+    head = stripped[:70]
     if any(opener in head for opener in CRISP_OPENERS):
         return 0.0, 0.0
-    idx = _first_index(text, task.answer_anchors)
+    idx = _first_index(stripped, task.answer_anchors)
     if idx is not None:
         if idx <= 30:
             return 0.0, float(idx)
         return min(100.0, (idx - 30) / 110.0 * 100.0), float(idx)
-    ent_idx = _first_index(text[:120], task.actionable_entities)
+    ent_idx = _first_index(stripped[:120], task.actionable_entities)
     if ent_idx is not None:
         return min(35.0, max(0.0, (ent_idx - 15) / 110.0 * 100.0)), float(ent_idx)
     return 100.0, 200.0

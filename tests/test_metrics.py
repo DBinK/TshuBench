@@ -269,3 +269,21 @@ def test_vtr_penalizes_sprawl_sections_and_excess_code_blocks():
         "```go\nimport _ \"time/tzdata\"\n```\n"
     )
     assert score_vtr(task, sprawl)[0] > score_vtr(task, concise)[0] + 5.0
+
+
+def test_cvd_rejects_empty_meta_label_without_verdict():
+    task = make_task(
+        prompt="线上 MySQL 主从延迟 300 秒，现在读流量全在从库，第一步应该先干嘛？",
+        verdict_anchors=["切到主库", "主库"],
+        actionable_entities=["主库", "SELECT"],
+    )
+    empty_meta = "先说结论：这个问题涉及几个方面，需要先把背景梳理清楚。"
+    real_verdict = "先说结论：先把读请求切到主库，再确认主库负载。"
+    assert score_cvd(task, empty_meta)[0] == 100.0
+    assert score_cvd(task, real_verdict)[0] == 0.0
+
+
+def test_cci_does_not_overpenalize_plain_connective_yiweizhe():
+    a = "300 秒延迟意味着用户可能读到 5 分钟前的数据，先保护业务正确性。"
+    b = "300 秒延迟表示用户可能读到 5 分钟前的数据，先保护业务正确性。"
+    assert score_cci(a)[0] == score_cci(b)[0] == 0.0

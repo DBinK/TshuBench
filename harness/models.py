@@ -135,3 +135,4 @@ class ModelReport(BaseModel):
     body_score: float = 0.0
     tier: str = ""
     reasoning_effort: str = ""
+    route_note: str = ""

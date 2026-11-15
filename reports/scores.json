@@ -4,17 +4,18 @@
     "reasoning_effort": "low",
     "tier": "T1 · 人话级",
     "n_samples": 36,
-    "tshu_score": 5.58,
+    "route_note": "",
+    "tshu_score": 5.5,
     "open_score": 0.23,
-    "body_score": 5.35,
-    "ci_lower": 3.87,
-    "ci_upper": 7.55,
+    "body_score": 5.28,
+    "ci_lower": 3.82,
+    "ci_upper": 7.44,
     "opening_entropy": 0.9669,
     "metrics": {
       "cvd": 1.69,
       "hed": 0.16,
       "enu": 13.47,
-      "cci": 2.48,
+      "cci": 2.14,
       "pni": 6.39,
       "vtr": 5.94
     },
@@ -51,17 +52,18 @@
     "reasoning_effort": "low",
     "tier": "T1 · 人话级",
     "n_samples": 36,
-    "tshu_score": 10.74,
+    "route_note": "",
+    "tshu_score": 10.3,
     "open_score": 2.39,
-    "body_score": 8.35,
-    "ci_lower": 9.01,
-    "ci_upper": 12.52,
+    "body_score": 7.91,
+    "ci_lower": 8.68,
+    "ci_upper": 12.03,
     "opening_entropy": 0.9768,
     "metrics": {
       "cvd": 16.89,
       "hed": 2.59,
       "enu": 22.07,
-      "cci": 7.43,
+      "cci": 5.42,
       "pni": 4.07,
       "vtr": 8.07
     },
@@ -77,11 +79,6 @@
         "response": "这类问题的核心是：**重启这一步的结果本身不可能被\"同步确认\"**。设备在回包前后断电重启，客户端无法区分\"升级失败\"和\"回包丢了\"。所以不要试图让回包百分之百可靠，而要把判定逻辑改成**基于状态查询的最终一致性**。\n\n## 一、根因要先想清楚\n\n常见原因：\n1. **回包发出前设备已经重启**：应用层 ACK 还在发送缓冲区里，重启时丢失。\n2. **TCP 关闭方式不对**：直接断电或发 RST，对端可能收不到已发数据。\n3. **重启耗时超过客户端超时**：bootloader 校验、解压、擦写 flash 可能很久。\n4. **设备重启后网络栈重新初始化**，IP/连接变化，旧连接直接失效。\n\n## 二、设备侧：让\"重启前后的状态\"可被查询\n\n1. **重启前持久化升级状态**到 NVM/Flash，例如 `{job_id, target_version, image_hash, stage=REBOOTING}`。\n2. **用 A/B 分区或带回滚的 bootloader**：新固件启动后若未通过自检（或未在规定时间内上报成功），自动回滚，避免\"看起来失败、其实成功、或者半成功\"的第三种状态。\n3. **启动后主动上报结果**：固件启动后读取升级标记，连上服务端后补报 `{job_id, result=SUCCESS, version=新版本}`。这是最可靠的一环，不依赖之前那次连接。\n4. **重启前的 ACK 处理**：\n   - 先回 ACK，等数据真正发出（确认 send 完成或 TCP 发送缓冲清空），再延迟 1–2 秒重启；\n   - 优雅关闭连接（FIN），不要直接 RST；\n   - 若协议支持，ACK 中直接携带\"即将重启，预计 N 秒后上线，新版本为 X\"。\n\n## 三、客户端/服务端：把\"超时\"当作\"未知\"，而不是\"失败\"\n\n状态机建议：\n\n```\nSENT_UPGRADE_CMD\n   ├─ 收到明确成功回包 → SUCCESS\n   ├─ 收到明确失败回包 → FAILED\n   └─ 超时/断连（重启阶段） → REBOOT_UNKNOWN（不直接判失败）\n                                  ↓\n                          轮询设备 version / job 状态\n                          （指数退避，总窗口 = 最长启动时间 × 系数）\n                                  ↓\n          版本 == target 且 hash 匹配 → SUCCESS\n          版本仍是旧版本且窗口超时   → FAILED（真失败，可回滚/重试）\n          设备上报了 FAILED/回滚标记  → FAILED\n```\n\n要点：\n- **判定依据用版本号 + 镜像 hash**，不要只看\"连上了没有\"。\n- **轮询窗口要大于实测最长启动时间**（建议取 P99 再加余量），并用退避避免重启期间狂打请求。\n- **错误码要区分**：不要统一报 `ConnectionTimeout`，改为 `UPGRADE_REBOOT_UNKNOWN` 或类似，并在最终状态里给出确认结果，方便排查和统计。\n- **升级命令要幂等**：同一 job_id 重复下发不会重复刷写，防止客户端\"以为失败而重试\"导致二次升级。\n\n伪代码示意：\n\n```python\ndef upgrade(device, image, job_id, target_ver):\n    resp = send_upgrade(device, image, job_id)   # 设备返回 ACCEPTED\n    if resp.is_error:\n        return FAILED\n\n    try:\n        wait_for_result(device, timeout=UPLOAD_TIMEOUT)   # 等待明确结果\n        return SUCCESS if resp.ok else FAILED\n    except ConnectionTimeout:\n        # 重启阶段：不判失败，进入确认\n        deadline = now() + BOOT_WINDOW\n        while now() < deadline:\n            sleep(backoff.next())\n            try:\n                st = query_status(device, job_id)  # 含 version/hash/stage\n            except ConnectionTimeout:\n                continue                           # 设备还没起来，继续等\n            if st.job_id == job_id and st.version == target_ver and st.hash_ok:\n                return SUCCESS\n            if st.stage == \"ROLLED_BACK\" or st.result == \"FAILED\":\n                return FAILED\n        return FAILED  # 窗口耗尽仍无法确认，才判定失败\n```\n\n## 四、运维与监控\n\n- 统计 `REBOOT_UNKNOWN → SUCCESS` 的比例，验证假报错确实是回包丢失，而非真实失败被掩盖。\n- 对窗口耗尽的 `FAILED` 单独抽样分析（串口日志/bootloader 日志），确认真失败率。\n- 灰度发布时先小批量验证重启耗时分布，再确定 BOOT_WINDOW。\n\n## 总结\n\n最稳的做法是三层配合：\n1. **设备**：重启前持久化状态、重启后主动上报、A/B 回滚；\n2. **协议**：ACK 发完再重启，优雅关闭连接；\n3. **客户端**：超时视为\"未知\"，通过版本/hash 查询做最终确认，而不是依赖那一次回包。\n\n如果你能告诉我你们用的协议（MQTT/HTTP/自定义 TCP）、设备 OS/bootloader 以及重启耗时大概多久，我可以给出更具体的实现建议。"
       },
       {
-        "task_id": "clr_t04",
-        "tshu_score": 20.2,
-        "response": "一般不会，甚至可能更慢。原因如下：\n\n**TLS 1.3 比 1.2 握手更快**\n- 完整握手只需 1-RTT，TLS 1.2 通常需要 2-RTT。\n- 支持 0-RTT 会话恢复（需注意重放风险）。\n- 去掉了很多不安全和低效的算法，握手消息更精简。\n\n所以降级到 1.2 意味着多一个往返，握手延迟通常会增加，而不是减少。\n\n**握手慢更可能的原因**\n1. **网络 RTT 高**：跨地域、跨运营商、移动网络，这是最常见的原因。可以用 `ping`、`traceroute` 或 `curl -w` 看各阶段耗时。\n2. **证书链过长或 OCSP 查询慢**：证书链包含过多中间证书，或客户端去查 OCSP 服务器超时。可开启 OCSP Stapling，精简证书链。\n3. **服务器 CPU 瓶颈**：RSA 2048 签名/解密较耗 CPU。可考虑 ECDSA 证书，或启用硬件加速（如 AES-NI、QAT）。\n4. **没有开启会话复用**：确认开启了 Session Tickets 或 Session ID 复用，并且负载均衡器正确共享会话密钥。\n5. **密钥交换算法选择**：优先 X25519 等 ECDHE 曲线，避免纯 RSA 密钥交换。\n6. **上游/中间件问题**：TLS 终止在 LB/CDN 上时，问题可能在那一层；也可能是 DNS 解析慢或 TCP 建连慢，它们不属于 TLS 本身。\n7. **HTTP/2 或 HTTP/3 未启用**：减少连接数能间接降低总体耗时。\n\n**排查建议**\n```bash\ncurl -w \"dns:%{time_namelookup} tcp:%{time_connect} tls:%{time_appconnect} ttfb:%{time_starttransfer}\\n\" -o /dev/null -s https://your.domain/\n```\n或使用 `openssl s_time`、SSL Labs 测试，以及服务端的 TLS 日志，确认慢在 DNS、TCP、TLS 还是服务端处理。\n\n如果你告诉我具体的环境（Nginx/Java/云负载均衡等）和 curl 的输出，我可以帮你进一步定位。"
-      },
-      {
         "task_id": "inc_t05",
         "tshu_score": 17.44,
         "response": "先回滚，别等根因定位清楚。线上故障影响面还在扩大时，止血优先级高于查因，原因有三点：\n\n- **时间成本不对等**：查根因可能要几十分钟到几小时，这期间用户和业务一直在受损；回滚通常几分钟就能完成。\n- **回滚是可逆的，且风险可控**：如果回滚后问题消失，说明大概率是这次发布引入的；如果没消失，你也排除了一个最大嫌疑，信息反而更清楚了。\n- **日志不会消失**：回滚前后保留好现场即可，根因可以之后从容分析，甚至在预发环境复现。\n\n**但有几个前提要先确认，花两三分钟就够：**\n\n1. **是否确实与最近变更相关**：看发布时间线和故障起始时间是否吻合。如果故障早于发布，或者跟发布无关（比如依赖的第三方挂了、数据库容量打满），回滚没用，还可能添乱。\n2. **回滚是否安全**：有没有不可逆的变更，比如数据库表结构、数据迁移、消息格式变化。如果新版本已写入了旧版本无法识别的数据，直接回滚代码可能引发新问题，需要先评估。\n3. **是否有更快的止血手段**：比如关闭功能开关（feature flag）、切流量到备用集群、限流降级、扩容。这些有时比完整回滚更快、更小。\n\n**同时并行做的事：**\n\n- 指定一人负责指挥，明确谁回滚、谁看日志，避免多人同时改动。\n- 回滚前用一两分钟抓一份现场：错误日志、关键指标截图、线程/堆栈快照，方便之后分析。\n- 对外同步状态，告知影响范围和预计恢复时间。\n\n**一句话结论**：如果确认与近期发布相关且可以安全回滚，就立即回滚；如果不是发布引起的，就转去用降级、切流或扩容止血，同时拉日志定位。定位根因是故障复盘的事，止血阶段不要把它放在前面。\n\n如果你方便告诉我更多信息（故障现象、最近发布了什么、是否有数据库变更），我可以帮你更具体地判断。"
@@ -90,6 +87,11 @@
         "task_id": "code_t07",
         "tshu_score": 17.41,
         "response": "偶发失败通常来自两个共享资源：**进程级全局状态**（环境变量、当前目录）和**固定的外部资源**（端口、真实配置路径）。`cargo test` 默认在同一进程的多线程里跑测试，所以一个测试里的 `set_var` 会影响所有其他测试。下面按资源分别处理，最后给一个统一的夹具。\n\n## 1. 端口：绑定 0 号端口，不要硬编码或\"先找空闲再释放\"\n\n\"找一个空闲端口、关掉、再让服务去绑\"存在竞争窗口。更稳的做法是让服务直接接收已绑定的 listener：\n\n```rust\nuse std::net::{TcpListener, SocketAddr};\n\nfn bind_ephemeral() -> (TcpListener, SocketAddr) {\n    let l = TcpListener::bind(\"127.0.0.1:0\").unwrap();\n    let addr = l.local_addr().unwrap();\n    (l, addr)\n}\n\n#[test]\nfn server_works() {\n    let (listener, addr) = bind_ephemeral();\n    // 把 listener 交给被测服务，而不是让服务再 bind 一次\n    let server = my_app::Server::from_listener(listener);\n    // 用 addr 发请求...\n}\n```\n\n如果服务内部必须自己 `bind`，就把地址作为参数传入，并确保测试里传的是 `:0`，然后从服务端读回实际端口。\n\n## 2. 环境变量：不要在测试里改全局环境\n\n`std::env::set_var` 是进程全局的，多线程并发调用本身就是未定义行为风险（edition 2024 里它已标记为 `unsafe`）。正确做法是**让代码不读全局环境，而是接收一个配置上下文**：\n\n```rust\n// 生产代码：从真实环境构造\npub struct Env {\n    pub config_dir: PathBuf,\n    pub vars: HashMap<String, String>,\n}\n\nimpl Env {\n    pub fn from_process() -> Self {\n        Self {\n            config_dir: dirs::config_dir().unwrap().join(\"myapp\"),\n            vars: std::env::vars().collect(),\n        }\n    }\n}\n\n// 业务代码只依赖 Env，不直接调用 std::env\npub fn load_settings(env: &Env) -> Result<Settings> { ... }\n```\n\n测试里直接构造 `Env`，完全不碰进程环境。这是根治方法。\n\n如果被测代码确实读取环境变量且无法改造，那就**启动子进程**，用 `Command::env_clear()` + 显式 `env()`：\n\n```rust\nlet out = Command::new(env!(\"CARGO_BIN_EXE_myapp\"))\n    .env_clear()\n    .env(\"HOME\", tmp.path())\n    .env(\"XDG_CONFIG_HOME\", tmp.path().join(\"cfg\"))\n    .output()?;\n```\n\n子进程的环境互不影响，也不会泄漏你的 shell 变量。\n\n迫不得已必须改全局状态时，用 `serial_test` crate 的 `#[serial]` 把这些测试串行化，但这只是兜底。\n\n## 3. 配置目录：用临时目录，并加一道\"防误触\"断言\n\n```rust\nuse tempfile::TempDir;\n\npub struct TestEnv {\n    pub root: TempDir,       // Drop 时自动删除\n    pub config_dir: PathBuf,\n    pub port: u16,\n}\n\nimpl TestEnv {\n    pub fn new() -> Self {\n        let root = tempfile::Builder::new().prefix(\"myapp-test-\").tempdir().unwrap();\n        let config_dir = root.path().join(\"config\");\n        std::fs::create_dir_all(&config_dir).unwrap();\n\n        // 防误触：确保不是真实配置目录\n        if let Some(real) = dirs::config_dir() {\n            assert!(!config_dir.starts_with(&real), \"测试路径落在真实配置目录内\");\n        }\n        Self { root, config_dir, port: 0 }\n    }\n}\n```\n\n生产代码里把路径解析也做成可注入的：`Paths::for_root(root)` 用于测试，`Paths::default()` 用于正式运行。不要在测试里让代码自己去调用 `dirs::config_dir()`，否则一旦漏掉注入就会写到真实目录。\n\n可以再加一层保险：在测试启动时（例如通过 `ctor` 或测试入口）检查真实配置目录是否被意外修改，或者在 CI 里设置 `HOME` 到一个临时目录，让 `dirs` 解析的路径本身就落在沙箱里。\n\n## 4. 进程级隔离：用 cargo-nextest\n\n```bash\ncargo install cargo-nextest\ncargo nextest run\n```\n\nnextest 每个测试跑在独立进程里，`set_var` 之类的全局副作用不会互相串扰，并且有超时和重试配置。它不能替代上面的改造（同进程内的线程竞争依然存在于 `cargo test`），但能显著降低偶发性。\n\n## 5. 统一夹具的收尾\n\n- 子进程用 `kill_on_drop(true)`（tokio）或在 `Drop` 里 `kill()`，避免失败的测试留下占着端口的孤儿进程。\n- 服务的关闭信号放进 `Drop`，不要依赖测试末尾的代码，因为 panic 会跳过它。\n- 每个测试只用自己的 `TestEnv`，不要用 `lazy_static` / `OnceLock` 共享可变的端口或目录。\n\n## 排查建议\n\n先跑 `cargo test -- --test-threads=1`。如果这样就稳定，问题基本可以确定是全局状态竞争；如果仍偶发，再看端口和残留进程（`lsof -i :端口` 或 `ss -ltnp`）。\n\n如果你能贴一下出问题的测试代码（或者报错信息，比如 \"Address already in use\" 还是某个环境变量值不对），我可以给出针对性的改法。"
+      },
+      {
+        "task_id": "code_t04",
+        "tshu_score": 16.96,
+        "response": "不一定是索引失效。单列索引 `created_at` 对这个查询未必有用，关键要看 `status` 的选择性和 MySQL 的执行计划选择。先给你几个排查方向和解决方案。\n\n## 一、为什么单列索引可能没用\n\n查询是 `WHERE status='pending' ORDER BY created_at`：\n\n- 如果 `status='pending'` 占表的大部分数据，MySQL 认为过滤后的结果集很大，直接全表扫描再排序，可能比\"用 created_at 索引逐行回表找 pending\"更快，优化器就会放弃索引。\n- 如果只有 `created_at` 索引，MySQL 要么按 created_at 顺序扫整个索引并回表过滤 status（代价高），要么全表扫+filesort，优化器通常选后者。\n\n## 二、推荐的解决方案：建联合索引\n\n```sql\nALTER TABLE your_table ADD INDEX idx_status_created (status, created_at);\n```\n\n原理：\n- `status` 等值匹配定位到一段连续区间；\n- 区间内数据已按 `created_at` 有序，**直接满足 ORDER BY，无需 filesort**。\n\nexplain 中期望看到：\n- `type`: `ref`\n- `key`: `idx_status_created`\n- `Extra`: 没有 `Using filesort`\n\n如果查询还带 `LIMIT`，效果更明显，因为可以提前结束扫描。\n\n## 三、排查步骤\n\n1. **看 explain 详情**\n   ```sql\n   EXPLAIN SELECT * FROM your_table WHERE status='pending' ORDER BY created_at LIMIT 100;\n   ```\n   关注 `possible_keys`、`key`、`rows`、`Extra`。\n\n2. **看 status 的分布**\n   ```sql\n   SELECT status, COUNT(*) FROM your_table GROUP BY status;\n   ```\n   如果 pending 占比很高（比如超过 20%~30%），单纯索引也可能不被选择，需要考虑业务或覆盖索引。\n\n3. **检查是否真的失效**（常见隐性失效原因）\n   - `status` 字段类型与传入值不一致（如 status 是 int，查询用 `'pending'`），会导致类型隐式转换；\n   - 对索引列使用函数，如 `WHERE DATE(created_at)...`；\n   - 字符集或排序规则不一致导致的比较问题。\n\n4. **统计信息不准**\n   ```sql\n   ANALYZE TABLE your_table;\n   ```\n   数据量大幅变化后，统计信息过期会导致优化器误判。\n\n5. **强制验证**（仅用于测试，不要长期依赖）\n   ```sql\n   SELECT ... FROM your_table FORCE INDEX (idx_created_at) WHERE ...;\n   ```\n   对比耗时，判断是否真的更快。\n\n## 四、结论\n\n- 大概率不是\"索引失效\"，而是**单列索引对该查询不是最优**，优化器选择了全表扫描。\n- 最佳实践：建 `(status, created_at)` 联合索引，既能过滤又能避免排序。\n- 如果 pending 数据占比很大，可以考虑只查需要的字段（覆盖索引）或加 LIMIT 分页。\n\n如果你方便贴一下 `EXPLAIN` 的输出、表结构和数据量，我可以帮你更具体地分析。"
       }
     ]
   },
@@ -98,21 +100,27 @@
     "reasoning_effort": "low",
     "tier": "T3 · 天书级",
     "n_samples": 36,
-    "tshu_score": 20.45,
-    "open_score": 1.05,
-    "body_score": 19.4,
-    "ci_lower": 17.07,
-    "ci_upper": 24.22,
+    "route_note": "",
+    "tshu_score": 20.81,
+    "open_score": 1.49,
+    "body_score": 19.32,
+    "ci_lower": 17.22,
+    "ci_upper": 24.7,
     "opening_entropy": 0.9564,
     "metrics": {
-      "cvd": 8.06,
-      "hed": 0.6,
+      "cvd": 10.78,
+      "hed": 1.43,
       "enu": 53.04,
-      "cci": 21.02,
+      "cci": 20.63,
       "pni": 5.88,
       "vtr": 14.29
     },
     "worst": [
+      {
+        "task_id": "clr_t03",
+        "tshu_score": 41.71,
+        "response": "# 直接回答：不一定，而且很可能更糟\n\n堆从 4G 加到 16G **不等于** Full GC 会消失，甚至可能让情况变差。原因如下。\n\n## 为什么加堆解决不了问题\n\nFull GC 的触发原因有很多种，**只有\"老年代真的不够用\"这一种**能靠加堆缓解，其他都会原样保留甚至放大：\n\n| Full GC 原因 | 加堆能否解决 |\n|---|---|\n| 内存泄漏（对象被长期持有） | ❌ 只是推迟爆发，泄漏变慢但还在 |\n| 大对象/短命对象大量晋升到老年代 | ❌ 晋升速率不变，老年代填满只是晚一点 |\n| Metaspace 不足或泄漏（动态代理、CGLIB、反射） | ❌ 元空间和堆没关系 |\n| 显式 `System.gc()` | ❌ 与堆大小无关 |\n| 直接内存（DirectByteBuffer）不足 | ❌ 触发的是堆外回收 |\n| Survivor 太小 / 晋升阈值太低 | ❌ 参数问题，不是容量问题 |\n| 流量增长导致内存确实不够 | ✅ 这种才是加堆的场景 |\n\n## 加堆的副作用（这是重点）\n\n1. **单次 Full GC 的 STW 时间会显著变长**。堆越大，标记/整理要扫的对象越多，16G 的一次 Full GC 很可能从几百 ms 变成几秒。你的现象可能从\"频繁短卡顿\"变成\"偶发长时间假死\"，线上感知更差。\n2. **G1 的 Humongous 对象、Region 数量、并发标记周期**都会随堆变大而更复杂，调参难度上升。\n3. **掩盖问题**：泄漏还在，只是从\"一天一次\"变成\"四天一次\"，等到爆发时更难排查。\n\n## 正确做法：先看 GC 日志，别猜\n\n**第一步：确认 Full GC 到底是什么触发的。** 开 GC 日志（JDK 8 用 `-Xloggc:gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps`，JDK 9+ 用 `-Xlog:gc*`），或者线上直接 `jstat -gcutil <pid> 1000` 看 O、F、M、YGC、FGC 的变化。\n\n**第二步：按典型特征分流：**\n\n- **FGC 后老年代占用降不下来**（O 一直很高）→ 内存泄漏或对象生命周期太长。用 `jmap -histo:live` / MAT 找大盘对象，看引用链。这是加堆最没用的场景。\n- **FGC 后老年代明显下降，但很快又满** → 晋升过快。看 Survivor 大小、`-XX:MaxTenuringThreshold`、大对象是否直接进老年代（G1 的 humongous region 是常见元凶）。\n- **Metaspace 持续增长** → 动态类生成泄漏（框架热部署、反射、字节码增强），查 `jmap -clstats`。\n- **FGC 很规律、间隔固定** → 大概率有人调了 `System.gc()`，或 RMI 定期 GC，或 `-XX:+ExplicitGCInvokesConcurrent` 没开。查代码或加 `-XX:+DisableExplicitGC`（谨慎）。\n- **FGC 由 DirectByteBuffer 触发** → 看 `-XX:MaxDirectMemorySize` 和 Netty/NIO 使用。\n\n**第三步：针对根因修。** 泄漏就修代码；晋升快就调 Survivor/阈值或换 G1/ZGC；元空间就治动态类；然后才是考虑容量是否真的需要扩。\n\n## 什么情况下加堆是合理的\n\n- 监控显示老年代在两次 FGC 之间的**正常业务峰值**就接近满，且对象确实是短命的、能自然回收——说明并发/流量涨了，容量不够。\n- 加堆的同时**必须**同步评估 GC 停顿：G1 设好 `-XX:MaxGCPauseMillis`，并压测验证 16G 下的 Full GC 停顿在可接受范围；或者直接上 ZGC（JDK 17+）逃避大堆 STW 问题。\n\n## 一句话总结\n\n加堆是\"缓解症状\"的手段，不是\"治 Full GC\"的手段。**先看 GC 日志确认根因，再决定是改代码、调参数还是加容量**。在没有定位原因前把 4G 拉到 16G，大概率是把\"频繁的小 Full GC\"换成\"偶发的、更长的 Full GC\"，问题还在，只是变隐蔽了。"
+      },
       {
         "task_id": "clr_t06",
         "tshu_score": 38.9,
@@ -122,11 +130,6 @@
         "task_id": "inc_t01",
         "tshu_score": 37.34,
         "response": "先结论：**别先深挖根因，先止血。第一步是在群里把应急状态拉起来，同时让发布负责人立即做回滚决策；只要最近发布涉及支付回调链路/配置，直接回滚，日志排查并行做。**\n\n## 1. 第一步先干嘛\n\n按这个顺序，前 1 分钟做完：\n\n1. **群里发首条应急同步，@支付值班、发布负责人、SRE、客服/商户接口人**\n2. **暂停后续发布/暂停灰度继续放量**\n3. **立即确认：最近这次发布是否包含支付回调服务、回调相关配置、网关路由、证书/密钥、依赖版本**\n4. **如果是/不确定：直接启动回滚或切回旧版本流量**  \n   支付回调是钱链路，优先恢复，不要等根因定位完再回滚。\n5. **并行安排一个人抓错误日志 Top 异常/依赖超时，一个人看回调积压和订单状态**\n\n一句话：**先同步 + 拉应急 + 回滚决策，日志并行查。**\n\n## 2. 群里首条同步模板\n\n直接发这种，结论先行：\n\n> 【P1 支付回调 5xx 应急】  \n> 时间：xx:xx  \n> 现象：刚发布后 8 分钟，支付回调接口 5xx 从 0.1% 涨到 12%，当前持续中。  \n> 影响：预计影响回调订单约 x 笔/分钟，涉及渠道/商户待确认。  \n> 已做：已暂停发布；已拉支付值班/SRE/发布负责人；正在确认回滚条件，准备回滚。  \n> 分工：@A 回滚/切流负责人；@B 日志与依赖排查；@C 客服/商户口径；@D 监控与影响面统计。  \n> 下一步：5 分钟内确认是否回滚完成及 5xx 是否下降。  \n> 下个更新：xx:xx。  \n> 注意：回调重试/补偿必须保证幂等，避免重复处理。\n\n后续每 5～10 分钟固定同步一次，不要在一线群里长篇讨论根因。\n\n## 3. 接下来 10 分钟动作\n\n- **看曲线拐点**：5xx 上升是否和发布时间点完全吻合；吻合就强怀疑发布。\n- **回滚/切流**：回滚最近发布；不能快速回滚就先切旧版本流量/关新逻辑开关。\n- **看错误类型**：是回调服务自身异常、依赖 DB/Redis/MQ 超时、网关 5xx、证书/签名校验、限流，还是第三方渠道问题。\n- **看影响面**：失败回调量、积压量、涉及商户/渠道、订单是否可被渠道重试、是否有掉单风险。\n- **保护幂等**：不要盲目全量重放回调；补偿前确认幂等键和订单状态机。\n- **客服口径**：先内部统一“支付回调异常，正在恢复，暂不对外承诺具体原因”。\n\n## 4. 群同步要包含的固定字段\n\n以后每条都按这个格式：\n\n> 状态：进行中/已止血/已恢复  \n> 现象：5xx 当前 x%，发布时间 xx:xx  \n> 影响：影响订单/商户/渠道范围  \n> 已做：回滚/切流/降级/暂停发布  \n> 负责人：回滚、排查、客服、影响面  \n> 下一步：具体动作 + 时间点  \n> 下个更新：xx:xx\n\n**核心原则：支付链路先止血后定位；回滚不丢人，掉单和重复扣款才严重。**"
-      },
-      {
-        "task_id": "code_t07",
-        "tshu_score": 36.3,
-        "response": "# 根因与总体思路\n\ncargo test 默认多线程并行，任何**进程级可变状态**都会互相串：环境变量、当前工作目录、固定端口、`~/.config` 之类的平台路径。靠 `--test-threads=1` 只是掩盖问题，且会让测试越来越慢。\n\n正解是把全局状态**推到程序边界**（`main` / runtime 层），核心逻辑全走参数注入；测试夹具负责构造这些参数。凡是绕不过去的（第三方库自己读 env、端到端验证），就**起子进程**跑，天然隔离。\n\n下面按三类状态分别说。\n\n---\n\n## 1. 端口：不要用固定端口，也不要「先探测后 bind」\n\n```rust\n// ❌ 竞态 + 串扰\nlet port = 8080;\n// ✅ \nlet listener = std::net::TcpListener::bind(\"127.0.0.1:0\").unwrap();\nlet addr = listener.local_addr().unwrap();\n```\n\n关键是**把 listener 的所有权传下去**，而不是只传端口号。很多框架都支持：\n\n- `axum::serve(listener, app)`\n- `actix_web::HttpServer::listen(listener)`（或 `.bind()` 但优先 `.listen`）\n- `hyper::server::conn` / `warp::serve(...).incoming(...)`\n- tokio 里 `TcpListener::bind(\"127.0.0.1:0\").await`\n\n如果被测代码只能接受「端口号」再自己 bind（例如某些客户端测试、脚本），那就接受一个极小概率的 flake，或者给这些测试打 `#[serial]` 串行化——别用 `portpicker` 那种「探测完再 bind」的写法，TOCTOU 窗口更大。\n\n---\n\n## 2. 环境变量：不要在并行测试里 `set_var`\n\nRust 2024 edition 里 `std::env::set_var` 已经是 `unsafe`（因为它和 libc `getenv` 并发是 UB）。这是硬约束，不是风格问题。\n\n**第一优先：把 env 读取做成纯函数。**\n\n```rust\n// 生产代码\n#[derive(Debug, Clone)]\npub struct Config { pub foo: String, pub bar: u64 }\n\nimpl Config {\n    pub fn from_env() -> Self {\n        Self::from_iter(std::env::vars())\n    }\n    pub fn from_iter<I>(iter: I) -> Self\n    where I: IntoIterator<Item = (String, String)>\n    {\n        let map: std::collections::HashMap<_, _> = iter.into_iter().collect();\n        Self {\n            foo: map.get(\"APP_FOO\").cloned().unwrap_or_default(),\n            bar: map.get(\"APP_BAR\").and_then(|v| v.parse().ok()).unwrap_or(0),\n        }\n    }\n}\n```\n\n测试里直接 `Config::from_iter([(\"APP_FOO\",\"x\")])`，**根本不需要碰全局 env**，也不需要串行。\n\n**如果第三方库自己读 env**（aws-config、openssl、`reqwest` 的代理变量、`RUST_LOG` 之类）：\n\n```rust\n// Cargo.toml: temp-env = \"0.3\", serial_test = \"3\"\nuse serial_test::serial;\n\n#[serial]                    // 全 crate 里所有 #[serial] 测试互斥\n#[test]\nfn reads_third_party_env() {\n    temp_env::with_vars(\n        [(\"HTTPS_PROXY\", Some(\"http://127.0.0.1:1\"))], // 注意 Some/None 语义\n        || {\n            // 这里跑被测代码\n        },\n    );\n}\n```\n\n只把**确实需要真 env 的那几个**打 `serial`，其他测试照常并行。不要给整个 crate 加 `serial`。\n\n**终极隔离：子进程。** 见第 4 节。\n\n---\n\n## 3. 配置目录：不要碰 `dirs`，注入 Paths\n\n`dirs::config_dir()` / `%APPDATA%` / `~/.config` 都是通过 env 解析的，你一旦设 env 又回到第 2 节的问题。所以路径也走注入：\n\n```rust\n#[derive(Debug, Clone)]\npub struct Paths {\n    pub config: std::path::PathBuf,\n    pub data: std::path::PathBuf,\n    pub cache: std::path::PathBuf,\n}\n\nimpl Paths {\n    /// 只在 main / runtime 层调用\n    pub fn from_platform() -> Self {\n        Self {\n            config: dirs::config_dir().unwrap().join(\"myapp\"),\n            data:   dirs::data_dir().unwrap().join(\"myapp\"),\n            cache:  dirs::cache_dir().unwrap().join(\"myapp\"),\n        }\n    }\n    /// 测试用：所有目录都落在 root 下\n    pub fn from_root(root: &std::path::Path) -> Self {\n        Self {\n            config: root.join(\"config\"),\n            data:   root.join(\"data\"),\n            cache:  root.join(\"cache\"),\n        }\n    }\n}\n```\n\nApp 构造时接收 `Paths`，内部文件操作全部基于 `self.paths.xxx`，绝不再调用 `dirs`。\n\n---\n\n## 4. 测试夹具：一个 `TestCtx` 打包所有隔离\n\n```rust\npub struct TestCtx {\n    _tmp: tempfile::TempDir,      // Drop 自动清理；保持存活\n    pub paths: Paths,\n    pub listener: std::net::TcpListener,\n}\n\nimpl TestCtx {\n    pub fn new() -> Self {\n        let tmp = tempfile::tempdir().unwrap();\n        let paths = Paths::from_root(tmp.path());\n        std::fs::create_dir_all(&paths.config).unwrap();\n        std::fs::create_dir_all(&paths.data).unwrap();\n        let listener = std::net::TcpListener::bind(\"127.0.0.1:0\").unwrap();\n        Self { _tmp: tmp, paths, listener }\n    }\n    pub fn addr(&self) -> std::net::SocketAddr {\n        self.listener.local_addr().unwrap()\n    }\n    pub fn config(&self) -> Config {\n        Config { /* 用默认值 + 指向 paths 的字段 */ ..Default::default() }\n    }\n}\n```\n\n用法：\n\n```rust\n#[test]\nfn test_something() {\n    let ctx = TestCtx::new();\n    let app = App::new(ctx.config(), ctx.paths.clone());\n    // 需要 HTTP 的地方用 axum::serve(ctx.listener.try_clone().unwrap(), ...)\n}\n```\n\n`TempDir` 是 RAII 清理；Windows 上偶尔 drop 失败可以先忽略错误，或 `TempDir::keep()` 后自己清理，但一般 tempfile 已经处理好。\n\n---\n\n## 5. 端到端：子进程 + `assert_cmd`，物理隔离\n\n对「整个 app 起来、读写配置、绑端口」这类集成测试，用子进程最干净，env、cwd、文件、端口全部互相独立，连 `RUST_LOG` 都不会污染：\n\n```rust\n// Cargo.toml: [dev-dependencies] assert_cmd = \"2\", tempfile = \"3\"\nuse assert_cmd::Command;\n\n#[test]\nfn e2e_app_starts_and_writes_config() {\n    let tmp = tempfile::tempdir().unwrap();\n    let mut cmd = Command::cargo_bin(\"myapp\").unwrap();\n    cmd.env_clear()                           // 干掉所有继承的 env\n       .env(\"XDG_CONFIG_HOME\", tmp.path())    // Linux\n       .env(\"HOME\", tmp.path())               // macOS/Linux 兜底（有些库读 HOME）\n       .env(\"APPDATA\", tmp.path())            // Windows\n       .env(\"LOCALAPPDATA\", tmp.path())\n       .env(\"APP_LISTEN\", \"127.0.0.1:0\")\n       .arg(\"--one-shot\")\n       .assert()\n       .success();\n\n    assert!(tmp.path().join(\"myapp/config.toml\").exists());\n}\n```\n\n`env_clear()` 是关键——它同时消灭两类串扰：父进程测试留下的 env、以及 CI 上的真实配置（避免误读真实 `~/.config`）。子进程模式下即使被测代码直接用 `dirs` 也没关系，因为 HOME/XDG 已经被重定向到 tmp。\n\n代价是启动慢。**混合策略**：核心逻辑用同进程 `TestCtx`（秒级），app-level 用子进程（数量控制在十几个以内）。\n\n---\n\n## 6. 工程化护栏，防止有人又写回去\n\n1. **`#![deny(unsafe_code)]`**（2024 edition 下等于禁止 `set_var`）。如果库内部需要，就只在极小的模块 `#[allow(unsafe_code)]` 并且只放 `temp_env` 调用。\n2. **CI grep**：`grep -rn 'set_var\\|set_current_dir\\|dirs::' src tests --include='*.rs' | grep -v 'src/runtime'` 命中即 fail。把「允许调用边界 API 的模块」白名单化。\n3. **`clippy::disallowed_methods`**：在 `clippy.toml` 里把 `std::env::set_var` 标 disallowed，比 grep 更精确。\n4. **不要**改 `RUST_TEST_THREADS=1` —— 那会让每次跑全量变得很慢，且掩盖漏网的串扰。要串行就只对 `#[serial]` 的少数几个测试。\n\n---\n\n## 一句话总结\n\n> 三类全局状态（env / 网络端口 / 平台路径）**都应该是注入的**；测试夹具用 `TempDir + Listener + Config::from_iter` 提供这三个；真绕不过去的用 `#[serial] + temp_env` 或子进程 `assert_cmd`。绝不在并行测试里碰 `set_var` 和 `dirs`。"
       },
       {
         "task_id": "clr_t07",
@@ -145,17 +148,18 @@
     "reasoning_effort": "medium",
     "tier": "T1 · 人话级",
     "n_samples": 36,
-    "tshu_score": 7.35,
-    "open_score": 0.47,
-    "body_score": 6.88,
-    "ci_lower": 5.85,
-    "ci_upper": 8.91,
+    "route_note": "",
+    "tshu_score": 7.54,
+    "open_score": 0.76,
+    "body_score": 6.78,
+    "ci_lower": 6.02,
+    "ci_upper": 9.17,
     "opening_entropy": 0.9606,
     "metrics": {
-      "cvd": 3.71,
+      "cvd": 6.14,
       "hed": 0.16,
       "enu": 14.12,
-      "cci": 4.52,
+      "cci": 4.08,
       "pni": 5.07,
       "vtr": 12.93
     },
@@ -167,7 +171,7 @@
       },
       {
         "task_id": "rel_t01",
-        "tshu_score": 15.05,
+        "tshu_score": 21.27,
         "response": "这里为您提供几种不同风格的版本，您可以直接复制使用：\n\n### 风格一：标准规范型（推荐，适合发在系统公告、邮件或发版群）\n> **【版本更新说明】**\n> * **新增**：支持数据导出为 CSV 格式\n> * **修复**：解决极端情况下订单可能重复提交的问题\n> * **优化**：底层 Redis 升级至 7.2 版本，提升系统性能与稳定性\n\n---\n\n### 风格二：极简干练型（适合发在钉钉/企业微信群、Jira 等）\n> **Release Notes:**\n> 1. 新增 CSV 导出功能；\n> 2. 修复订单重复提交的 Bug；\n> 3. Redis 依赖升级至 7.2。\n\n---\n\n### 风格三：开发/技术流（适合 GitHub/GitLab Release 或 Git Commit）\n> - **feat**: 新增数据 CSV 导出功能\n> - **fix**: 修复并发场景下订单重复提交的问题\n> - **chore**: 升级 Redis 至 7.2 版本"
       },
       {
@@ -176,14 +180,14 @@
         "response": "在**“节点内存本来就紧”**且**“采用 Sidecar 模式”**的前提下，毫无悬念优先选 **Fluent Bit**。\n\n以下是具体的对比分析和实战避坑建议：\n\n---\n\n### 一、 核心选型对比\n\n| 维度 | Fluent Bit | Filebeat | 结论 |\n| :--- | :--- | :--- | :--- |\n| **开发语言** | **C 语言** | Go 语言 | C 语言无垃圾回收（GC）机制，运行时开销极小。 |\n| **单实例内存占用** | **~5MB – 20MB** | **~30MB – 80MB+** | Go 的 runtime 基础底噪 + GC 机制注定了 Filebeat 内存下限更高。 |\n| **Sidecar 放大效应** | 假设 100 个 Pod：<br>约 **1 GB** 内存 | 假设 100 个 Pod：<br>约 **5 ~ 8 GB** 内存 | **在 Pod 密度高的节点上，Filebeat 会迅速吃光剩余内存。** |\n| **CPU 占用** | 极低（事件驱动） | 较低 | Fluent Bit 更省 CPU。 |\n| **生态与输出端** | 原生 CNCF 毕业项目，支持 ES、Loki、Kafka、S3 等几乎所有后端 | Elastic 亲儿子，配合 Elasticsearch / Logstash 最丝滑 | 如果后端是 ES，两者都很方便；如果后端多样，Fluent Bit 更灵活。 |\n\n---\n\n### 二、 为什么在这个场景下 Filebeat 劣势明显？\n\nSidecar 模式最大的痛点是 **$O(N)$ 的资源放大效应**（每个 Pod 都要分担一份 Agent 的底噪）：\n1. **GC 导致内存波动**：Go 程序的堆内存在达到触发点前不会释放，高并发写入时 Filebeat 内存容易瞬时冲高到 100MB+，极易触发 Pod 的 OOMKilled。\n2. **节点内存浪费**：在 16G/32G 内存的小规格节点上，如果跑了 30 个 Pod，光 Filebeat 就会吃掉 1.5GB ~ 2.5GB 内存；而 Fluent Bit 仅消耗不到 500MB。\n\n---\n\n### 三、 强烈建议：反思是否必须用 Sidecar？\n\n既然**节点内存紧缺**，建议评估是否一定要用 Sidecar。\n\n* **Sidecar 模式**：实例数 = Pod 数。每个 Pod 独立采集，隔离性好，但极其消耗集群总体资源。\n* **DaemonSet 模式**：实例数 = Node 节点数。每个 Node 只跑一个 Fluent Bit 实例。\n  * 如果每节点跑 20 个 Pod，DaemonSet 只需要 **1 个 Agent（约 30~50MB）**，而 Sidecar 需要 **20 个 Agent**。\n  * **建议：** 只要业务日志能打到标准输出（stdout/stderr），或者能通过 `hostPath` 挂载落盘，优先转为 **Fluent Bit DaemonSet** 方式，能直接省下 80% 以上的日志采集内存。\n  * **必须用 Sidecar 的场景：** 各业务容器有独立的复杂落盘路径、业务要求绝对隔离、或者单个 Pod 产生海量独立日志需要独立限流/隔离解析。\n\n---\n\n### 四、 Fluent Bit 做 Sidecar 时的关键配置建议\n\n如果确定必须用 Fluent Bit Sidecar，为了防止它在网络抖动或日志暴增时吃光内存，务必做好以下配置：\n\n1. **严格限制内存缓冲区（防止 OOM）**：\n   在 `INPUT` 插件中配置 `Mem_Buf_Limit`，当下游（如 Kafka/ES）卡顿或挂掉时，限制内存堆积上限：\n   ```ini\n   [INPUT]\n       Name              tail\n       Path              /var/log/app/*.log\n       Mem_Buf_Limit     10MB\n   ```\n2. **启用轻量磁盘缓冲（可选）**：\n   如果日志绝对不能丢，配置 `storage.type filesystem`，让堆积的数据落到 Pod 的临时卷（emptyDir），而不是撑爆内存。\n3. **合理配置 Kubernetes Resource Limit**：\n   ```yaml\n   resources:\n     requests:\n       cpu: 10m\n       memory: 15Mi\n     limits:\n       cpu: 100m\n       memory: 50Mi\n   ```\n\n**总结**：内存吃紧 + Sidecar 场景，无脑选 **Fluent Bit**。"
       },
       {
-        "task_id": "inc_t02",
-        "tshu_score": 13.57,
-        "response": "线上遇到这种情况，**第一步最该干的绝对不是去查原因（不要去慢查询日志里翻是谁写的 SQL），而是：立刻“止血”，切断/降级读流量，防止脏读引发业务灾难，同时防范主库雪崩！**\n\n具体落地动作分两步走：\n\n### 1. 核心读业务切回主库，非核心业务直接降级（最紧急）\n\n延迟 300 秒（5分钟），意味着用户查到的是 5 分钟前的数据。如果涉及“支付状态”、“订单状态”、“库存”等，用户会疯狂重复下单、提工单，引发严重业务事故。\n\n*   **如果主库负载很低（CPU < 30-40%）：**\n    *   **立刻把核心业务的读流量切到主库**（保证交易、登录等核心链路拿到最新数据）。\n*   **如果读流量极大，或者主库负载已经很高：**\n    *   **绝对不能把所有读流量一股脑切给主库！** 否则会瞬间打崩主库，导致“读写双亡”（直接全站不可用）。\n    *   **正确做法**：只切**最核心**的强一致性读流量到主库；非核心读业务**就地限流或降级**（比如提示“系统繁忙，请稍后刷新”、或者走 Redis 缓存兜底）。\n\n---\n\n### 2. 止血后，第二步才是快速排查与救火（恢复从库）\n\n控制住业务影响后，立刻登录从库和主库排查：\n\n1.  **看从库卡在哪个线程/事务：**\n    *   执行 `SHOW PROCESSLIST;` 或 `SHOW SLAVE STATUS\\G`。\n    *   重点看 `Seconds_Behind_Master` 和 `Last_SQL_Error`。\n    *   看 `system user` 正在执行什么：\n        *   **如果是大 DDL（如 `ALTER TABLE`）：** 考虑业务容忍度，必要时 `KILL` 掉该 DDL（优先恢复主从，改用 pt-osc 或 gh-ost 重新操作）。\n        *   **如果是一条大事务（如 `DELETE/UPDATE` 了几十万行）：** 只能等它跑完，或者紧急 `KILL` 事务并等待回滚（注意：Kill 回滚也很慢）。\n2.  **临时调大从库性能参数（猛踩油门）：**\n    *   如果硬件 IO 扛得住，临时调松持久化参数加速回放：\n        *   `set global sync_binlog = 0;`\n        *   `set global innodb_flush_log_at_trx_commit = 2;` (甚至 0)\n    *   如果还没开启**多线程并行复制**，评估是否能动态开启（`slave_parallel_workers`）。\n\n---\n\n### 总结口诀：\n**先切流量保业务（评估主库容量，核心切、非核心降），再查从库杀大事务调参数。千万别不看主库水位直接把全部读流量切过去！**"
-      },
-      {
         "task_id": "clr_t02",
         "tshu_score": 13.39,
         "response": "最省事的方法主要有两个，取决于你是用 `docker run` 命令行还是 `docker-compose`：\n\n---\n\n### 方法一：加环境变量（最推荐，最省事）\n\n直接在启动时传入环境变量 `-e TZ=Asia/Shanghai`。绝大多数主流镜像（Ubuntu, Debian, CentOS, Python, Node 等）都原生支持。\n\n*   **命令行（`docker run`）：**\n    ```bash\n    docker run -d -e TZ=Asia/Shanghai 你的镜像名\n    ```\n\n*   **Docker Compose（`docker-compose.yml`）：**\n    ```yaml\n    services:\n      app:\n        image: 你的镜像名\n        environment:\n          - TZ=Asia/Shanghai\n    ```\n\n---\n\n### 方法二：挂载宿主机的时区文件（最保险）\n\n如果你的**宿主机本身已经是北京时间**，直接把宿主机的时区文件只读挂载进容器，对 99% 的镜像都有效：\n\n*   **命令行（`docker run`）：**\n    ```bash\n    docker run -d -v /etc/localtime:/etc/localtime:ro 你的镜像名\n    ```\n\n*   **Docker Compose（`docker-compose.yml`）：**\n    ```yaml\n    services:\n      app:\n        image: 你的镜像名\n        volumes:\n          - /etc/localtime:/etc/localtime:ro\n    ```\n\n---\n\n### 踩坑提醒（关于 Alpine 镜像）：\n如果你的镜像是极简的 **Alpine Linux**（比如 `alpine:latest`、`python:alpine`、`nginx:alpine`）：\nAlpine 默认没有安装时区数据包，**上述方法一可能会失效**。\n* 如果遇到 Alpine 不生效，建议用**方法二**；\n* 或者在制作镜像（Dockerfile）时加上：\n  ```dockerfile\n  RUN apk add --no-cache tzdata && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo \"Asia/Shanghai\" > /etc/timezone\n  ```"
+      },
+      {
+        "task_id": "inc_t05",
+        "tshu_score": 12.0,
+        "response": "**毫无疑问：先回滚（快速止血），绝对不能等根因定位清楚再动！**\n\n在生产事故处理中，有一条不可动摇的黄金法则：**“先止血，后治病；先恢复，再排查。”**\n\n当影响面还在扩大时，你的第一KPI是**阻止业务损失扩大**，而不是“当大侦探找出真相”。\n\n具体执行时，建议遵循以下**标准应急响应节奏**：\n\n---\n\n### 第一步：花 1~2 分钟做“现场保全”（但不要分析）\n在点击回滚之前，只需要做最基础的**采样留痕**，避免回滚后证据丢失（如果日志已经实时同步到 ELK、Loki 或云厂商日志服务，甚至可以跳过这步直接回滚）：\n1. **保留少量现场：** 如果是容器化环境（K8s），可以将 1~2 个故障 Pod 摘除流量（从 Service 中移除标签），保留其作为“案发现场”供后续分析，其余全部回滚。\n2. **打快照/Dump：** 如果是 Java 应用且疑似 OOM/死锁，一键执行内存 Dump 和 Thread Dump（有自动化脚本最好，没有就别死磕，直接回滚）。\n\n### 第二步：果断回滚（执行止血）\n* **为什么必须回滚？**\n  定位根因的时间是极其不可控的（可能需要几分钟，也可能需要几小时）。在影响面不断扩大的情况下，每拖一分钟，可能意味着巨额的资金损失、用户流失甚至监管风险。回滚到“已知的上一个稳定版本”，是恢复系统可用性概率最高、耗时最短的手段。\n* **回滚前的唯一前置确认：**\n  只需确认一点——**本次上线是否包含“不可逆的改动”？**\n  * 例如：破坏性数据库变更（删表、改字段）、强依赖新数据的写入等。\n  * 如果**没有**不可逆改动，**立即回滚**。\n  * 如果**有**不可逆改动，盲目回滚可能导致二次灾难，此时应优先考虑**降级、熔断、限流**或**关闭对应业务开关（Feature Flag）**。\n\n### 第三步：确认恢复指标\n回滚之后，密切关注核心业务指标（成功率、响应时间、QPS、错误码趋势）是否恢复平稳。\n* 恢复了：警报解除，进入复盘阶段。\n* 未恢复：说明问题可能不是本次代码改动引起的（可能是基础设施故障、外部依赖挂了、网络攻击等），立刻启动多方协同排查。\n\n### 第四步：离线复盘与排查根因（线下治病）\n此时业务已经恢复正常，不再有倒计时的心理压力：\n1. 调取第一步留存的日志、监控、Trace 链路和 Dump 文件。\n2. 在测试/预发环境尝试复现。\n3. 查清为什么会漏测、为什么没有灰度拦截。\n4. 编写事故复盘报告（Post-mortem），落实改进措施。\n\n---\n\n**总结成一句话：**\n> **线上着火了，先灭火救人，千万别站在火场里研究这把火到底是用打火机还是短路引起的。**"
       }
     ]
   },
@@ -192,30 +196,31 @@
     "reasoning_effort": "medium",
     "tier": "T1 · 人话级",
     "n_samples": 36,
-    "tshu_score": 5.62,
-    "open_score": 0.95,
-    "body_score": 4.67,
-    "ci_lower": 4.17,
-    "ci_upper": 7.16,
+    "route_note": "",
+    "tshu_score": 5.63,
+    "open_score": 1.18,
+    "body_score": 4.45,
+    "ci_lower": 4.09,
+    "ci_upper": 7.09,
     "opening_entropy": 0.9665,
     "metrics": {
-      "cvd": 7.9,
-      "hed": 0.0,
+      "cvd": 9.49,
+      "hed": 0.28,
       "enu": 8.33,
-      "cci": 3.62,
+      "cci": 2.63,
       "pni": 6.68,
       "vtr": 6.91
     },
     "worst": [
       {
-        "task_id": "inc_t02",
-        "tshu_score": 17.18,
-        "response": "线上 MySQL 主从延迟 300 秒，且读流量全在从库，这意味着**用户现在看到的都是 5 分钟前的脏数据，甚至可能引发严重的业务错乱（如刚付完款查不到订单、重复扣款等）**。\n\n在救火场景下，**第一步绝对不是去查为什么延迟（那是第二步），而是“业务止损”！**\n\n### 第一步：评估主库水位，降级核心读流量（先保业务！）\n\n你需要在 1 分钟内完成以下判断和操作：\n\n1. **看一眼主库（Master）的 CPU 和连接数：**\n   * **如果主库负载很低（比如 CPU < 30%）：** 立即通过配置中心或中间件，将**核心业务**（如交易、支付、个人中心）的读流量**切回主库**；非核心业务（如商品列表、历史记录、报表）继续留在从库硬抗，或者直接降级。\n   * **如果主库负载已经很高了：** **千万别把读流量全切回主库**，否则主库直接被打死，引发全面雪崩。此时只能通过网关对非核心读请求进行**限流（Rate Limiting）**或**降级**，甚至对部分强一致性要求的业务暂停服务，优先保住主库的“写”能力，同时给从库减轻压力去追延迟。\n\n---\n\n### 稳住业务后，立刻执行第二步：30秒定位延迟元凶（查病因）\n\n立刻登录**从库（Slave/Replica）**，执行以下两个命令来定位问题：\n\n#### 1. 执行 `SHOW SLAVE STATUS\\G`（MySQL 8.0+ 用 `SHOW REPLICA STATUS\\G`）\n重点看这几个指标：\n* **`Replica_IO_Running` 和 `Replica_SQL_Running`**：是不是都是 `Yes`？（如果有一个是 No，说明复制直接断了，看报错信息）。\n* **对比 `Master_Log_File` 和 `Relay_Master_Log_File`**：判断是 IO 线程慢（网络问题/主库写入太猛），还是 SQL 线程慢（从库重放慢，99% 是这个原因）。\n* **`SQL_Remaining_Delay` 或状态信息**：看 SQL 线程当前卡在什么状态（比如 `System lock` 或 `Reading event from the relay log`）。\n\n#### 2. 执行 `SHOW PROCESSLIST;`\n看看从库现在到底在干什么，通常有三种死法：\n\n* **情况 A：从库自身因为“读流量”太大，把机器打满了（最符合你描述的场景）。**\n  * **现象**：看到大量业务 `SELECT` 语句处于 `Sending data`、`Copying to tmp table` 状态，从库 CPU 或磁盘 IO 100%，导致负责同步的 SQL 线程抢不到资源。\n  * **立刻处理**：找出那些耗时极长的烂 SQL，直接生成 `KILL <id>;` 批量杀掉，立刻把资源让给复制线程。\n\n* **情况 B：主库刚才执行了一个“大事务”或“DDL”。**\n  * **现象**：`PROCESSLIST` 里看到 SQL 线程正在苦哈哈地执行一个巨大的 `DELETE`、`UPDATE` 或 `ALTER TABLE`，状态可能是 `Applying batch of row changes (update)`。\n  * **立刻处理**：这种情况**千万别重启从库**（重启会导致回滚，更慢）。只能等它跑完。这时候更需要严格执行“第一步”的流量切换，干等它追上。\n\n* **情况 C：从库的慢查询把 SQL 线程“锁”住了。**\n  * **现象**：SQL 线程的状态是 `Waiting for table metadata lock` 或等待行锁。这是因为从库上有一个长查询（读流量）一直没结束，阻塞了主从同步过来的 DDL 或更新。\n  * **立刻处理**：在 `PROCESSLIST` 里找到那个阻塞它的 `SELECT` 进程，直接 **`KILL`** 掉，延迟瞬间就会往下掉。\n\n### 第三步：临时提速手段（如果从库 IO 没满，只是单纯追得慢）\n\n如果确认是大事务导致的延迟，且从库硬件资源还有富余，可以在从库**临时开启“双一”降级**，让它全速追赶（追上后再改回来）：\n\n```sql\n-- 临时修改，重启失效，让从库不刷盘直接写内存，极大提高追赶速度\nSET GLOBAL sync_binlog = 0;\nSET GLOBAL innodb_flush_log_at_trx_commit = 2;\n```\n\n### 总结行动指南：\n1. **切流量/限流**（保住业务不出错，保住主库不宕机）。\n2. **`SHOW PROCESSLIST`** 杀掉从库上的慢查询和阻塞查询。\n3. **修改刷盘参数**（`0` 和 `2`）加速从库回放。\n4. 追平后，恢复参数，恢复流量，再去翻 Binlog 算账是谁写的大事务或慢查询。"
-      },
-      {
         "task_id": "code_t02",
         "tshu_score": 16.56,
         "response": "`111: Connection refused` 是最常见、也是最好排查的 502 错误。\n\n这个报错的字面意思是：**Nginx 敲了 `127.0.0.1:8080` 的门，但里面没人开门（被操作系统直接拒绝了）。**\n\n一般是因为**后端服务（比如 Java/Node/Python/Go 等）挂了、没启动，或者端口对不上。**\n\n请严格按照以下优先级，从第 1 步开始排查：\n\n### 第一步：先看 8080 端口到底有没有服务在监听（最核心）\n\n在服务器上执行以下命令：\n```bash\nss -ntlp | grep 8080\n# 或者用老命令：netstat -ntlp | grep 8080\n```\n根据输出结果，分三种情况处理：\n\n#### 情况 A：没有任何输出（最常见，占 80%）\n*   **原因**：你的后端服务根本没运行，或者启动失败挂掉了。\n*   **怎么查**：\n    1. 去把后端服务启动起来（如 `systemctl start xxx` 或 `docker start xxx` 或 `pm2` 等）。\n    2. 如果刚启动又挂了，**立刻去看后端服务的报错日志**（可能是数据库连接失败、内存溢出 OOM、配置文件写错等导致服务崩溃）。\n\n#### 情况 B：有输出，但监听的是 `:::8080` (IPv6) 或具体的内网 IP\n*   **原因**：IP 协议或地址不匹配。比如后端只监听了 IPv6，或者只监听了网卡的局域网 IP（如 `192.168.1.100:8080`），而没有监听本地回环地址 `127.0.0.1`。\n*   **怎么改**：\n    *   方法 1：修改后端配置，让它监听 `0.0.0.0:8080` 或 `127.0.0.1:8080`。\n    *   方法 2：修改 Nginx 的 `proxy_pass`，改成后端实际监听的 IP。\n\n#### 情况 C：我看后端服务明明活着，但这命令就是没输出\n*   **原因**：你记错端口了。后端可能跑在 8081、3000、9000 等其他端口上。\n*   **怎么查**：用 `ps -ef | grep 你的服务名` 找到进程 PID，然后用 `ss -ntlp | grep PID` 看看它到底监听在哪个端口，再去改 Nginx 配置。\n\n---\n\n### 第二步：如果在第一步看到 `127.0.0.1:8080` 正常监听，还是报这个错？\n\n如果端口明明在监听，Nginx 还是被拒，按下面顺序查：\n\n#### 1. 都在 Docker 容器里吗？（新手极易踩坑）\n*   **现象**：如果你的 Nginx 是跑在 Docker 容器里的，你在配置里写 `127.0.0.1:8080`，Nginx 找的是**它自己那个容器内部**的 8080，而不是宿主机的 8080！\n*   **解决**：把 Nginx 里的 `127.0.0.1` 改成宿主机内网 IP、Docker 网关 IP（如 `172.17.0.1`），或者使用 Docker Compose 的服务名。\n\n#### 2. 尝试在命令行手动请求一下\n在宿主机执行：\n```bash\ncurl -I http://127.0.0.1:8080\n```\n*   如果 `curl` 也报 `Connection refused`，说明是后端服务假死，重启后端。\n*   如果 `curl` 能通，唯独 Nginx 不通，往下看第 3 点。\n\n#### 3. SELinux 拦截了（CentOS / RHEL 系统常见）\n如果你用的是 CentOS/Rocky Linux，且 `curl` 能通但 Nginx 不通，99% 是 SELinux 限制了 Nginx 的网络转发权限。\n*   **排查与解决**：执行以下命令允许 Nginx 连接网络：\n    ```bash\n    setsebool -P httpd_can_network_connect 1\n    ```\n\n#### 4. 瞬间高并发把后端连接队列打满了（偶发报错）\n如果这个报错不是一直出现，而是**偶尔/高峰期出现**，说明后端处理不过来了，全连接队列（Accept Queue）满了，内核直接拒绝新连接。\n*   **解决**：需要调大系统的 `net.core.somaxconn` 参数，并同时调大后端服务（如 Tomcat/Gunicorn/Uwsgi）的 `backlog` 配置，或者给后端扩容。\n\n---\n\n**总结你的行动路线：**\n先敲 `ss -ntlp | grep 8080` -> 没东西就去拉起后端服务看后端日志 -> 有东西就 `curl` 一下试试 -> 再考虑 Docker 网络隔离或 SELinux。"
+      },
+      {
+        "task_id": "inc_t02",
+        "tshu_score": 14.75,
+        "response": "线上 MySQL 主从延迟 300 秒，且读流量全在从库，这意味着**用户现在看到的都是 5 分钟前的脏数据，甚至可能引发严重的业务错乱（如刚付完款查不到订单、重复扣款等）**。\n\n在救火场景下，**第一步绝对不是去查为什么延迟（那是第二步），而是“业务止损”！**\n\n### 第一步：评估主库水位，降级核心读流量（先保业务！）\n\n你需要在 1 分钟内完成以下判断和操作：\n\n1. **看一眼主库（Master）的 CPU 和连接数：**\n   * **如果主库负载很低（比如 CPU < 30%）：** 立即通过配置中心或中间件，将**核心业务**（如交易、支付、个人中心）的读流量**切回主库**；非核心业务（如商品列表、历史记录、报表）继续留在从库硬抗，或者直接降级。\n   * **如果主库负载已经很高了：** **千万别把读流量全切回主库**，否则主库直接被打死，引发全面雪崩。此时只能通过网关对非核心读请求进行**限流（Rate Limiting）**或**降级**，甚至对部分强一致性要求的业务暂停服务，优先保住主库的“写”能力，同时给从库减轻压力去追延迟。\n\n---\n\n### 稳住业务后，立刻执行第二步：30秒定位延迟元凶（查病因）\n\n立刻登录**从库（Slave/Replica）**，执行以下两个命令来定位问题：\n\n#### 1. 执行 `SHOW SLAVE STATUS\\G`（MySQL 8.0+ 用 `SHOW REPLICA STATUS\\G`）\n重点看这几个指标：\n* **`Replica_IO_Running` 和 `Replica_SQL_Running`**：是不是都是 `Yes`？（如果有一个是 No，说明复制直接断了，看报错信息）。\n* **对比 `Master_Log_File` 和 `Relay_Master_Log_File`**：判断是 IO 线程慢（网络问题/主库写入太猛），还是 SQL 线程慢（从库重放慢，99% 是这个原因）。\n* **`SQL_Remaining_Delay` 或状态信息**：看 SQL 线程当前卡在什么状态（比如 `System lock` 或 `Reading event from the relay log`）。\n\n#### 2. 执行 `SHOW PROCESSLIST;`\n看看从库现在到底在干什么，通常有三种死法：\n\n* **情况 A：从库自身因为“读流量”太大，把机器打满了（最符合你描述的场景）。**\n  * **现象**：看到大量业务 `SELECT` 语句处于 `Sending data`、`Copying to tmp table` 状态，从库 CPU 或磁盘 IO 100%，导致负责同步的 SQL 线程抢不到资源。\n  * **立刻处理**：找出那些耗时极长的烂 SQL，直接生成 `KILL <id>;` 批量杀掉，立刻把资源让给复制线程。\n\n* **情况 B：主库刚才执行了一个“大事务”或“DDL”。**\n  * **现象**：`PROCESSLIST` 里看到 SQL 线程正在苦哈哈地执行一个巨大的 `DELETE`、`UPDATE` 或 `ALTER TABLE`，状态可能是 `Applying batch of row changes (update)`。\n  * **立刻处理**：这种情况**千万别重启从库**（重启会导致回滚，更慢）。只能等它跑完。这时候更需要严格执行“第一步”的流量切换，干等它追上。\n\n* **情况 C：从库的慢查询把 SQL 线程“锁”住了。**\n  * **现象**：SQL 线程的状态是 `Waiting for table metadata lock` 或等待行锁。这是因为从库上有一个长查询（读流量）一直没结束，阻塞了主从同步过来的 DDL 或更新。\n  * **立刻处理**：在 `PROCESSLIST` 里找到那个阻塞它的 `SELECT` 进程，直接 **`KILL`** 掉，延迟瞬间就会往下掉。\n\n### 第三步：临时提速手段（如果从库 IO 没满，只是单纯追得慢）\n\n如果确认是大事务导致的延迟，且从库硬件资源还有富余，可以在从库**临时开启“双一”降级**，让它全速追赶（追上后再改回来）：\n\n```sql\n-- 临时修改，重启失效，让从库不刷盘直接写内存，极大提高追赶速度\nSET GLOBAL sync_binlog = 0;\nSET GLOBAL innodb_flush_log_at_trx_commit = 2;\n```\n\n### 总结行动指南：\n1. **切流量/限流**（保住业务不出错，保住主库不宕机）。\n2. **`SHOW PROCESSLIST`** 杀掉从库上的慢查询和阻塞查询。\n3. **修改刷盘参数**（`0` 和 `2`）加速从库回放。\n4. 追平后，恢复参数，恢复流量，再去翻 Binlog 算账是谁写的大事务或慢查询。"
       },
       {
         "task_id": "clr_t07",
@@ -223,14 +228,14 @@
         "response": "这个命令的初步设计方向是清晰的，但在**硬件管理（特别是涉及到网络底层配置）**以及 **CLI 设计规范（POSIX/GNU 标准）**的角度来看，存在几个比较大的“坑”和不合理之处。\n\n我从**致命缺陷（网络层）、CLI 交互规范、运维安全**三个维度帮你剖析一下，并给出改进建议：\n\n---\n\n### 一、 致命缺陷：网络参数缺失（最大的坑）\n\n在硬件管理中，**只改 IP 地址通常会导致设备失联**。\n1. **缺少子网掩码（Netmask/Prefix）：** 只给一个 `192.168.1.100`，设备怎么知道自己是 `/24` 还是 `/16`？如果默认赋一个 `/24`，在很多企业级复杂网络中会直接导致网络不通。\n2. **缺少网关（Gateway）：** 如果要把设备改到另一个网段，旧的默认网关就失效了，不指定新网关，跨网段管理直接断联。\n3. **缺少网卡指定（Interface）：** 硬件设备经常有多个网口（如 `eth0`, `eth1`, 或者管理口 `mgmt`、业务口 `lan1`），这个 IP 是设给谁的？\n4. **DHCP 怎么切回？** 这个命令叫 `set-ip`，如果用户想从静态 IP 改回 DHCP 动态获取，这个命令结构就不支持了。\n\n**改进建议：**\n* 支持 CIDR 格式直接包含掩码，如 `192.168.1.100/24`。\n* 增加 `--gateway`（或 `-g`）和 `--interface`（或 `-i`）参数。\n\n---\n\n### 二、 CLI 设计规范问题（反直觉的设计）\n\n当前的语法：`mycli device set-ip <IP> --sn <SN>`\n\n**坑点：主宾颠倒。**\n在 CLI 设计中（参考 `kubectl`, `docker`, `ip` 等成熟工具），位置参数（Positional Argument）通常是**被操作的目标（Target）**，或者是**目标+新状态**。\n把 `<IP>` 作为第一个位置参数，而把唯一确定设备的 `<SN>` 放在 `--sn` 选项里，这非常反直觉。用户会觉得：“我是对这个 IP 做操作”，而不是“我对这个设备做操作”。\n\n**改进建议（二选一）：**\n* **方案 A（推荐，全位置参数）：** `mycli device set-ip <SN> <IP/CIDR>`\n  * 语义：“把 `<SN>` 的 IP 设置为 `<IP>`”。非常符合自然语言习惯。\n* **方案 B（全 Flag 参数，适合严谨的脚本）：** `mycli device set-ip --sn <SN> --ip <IP/CIDR>`\n  * 语义明确，脚本可读性极高，不容易因为在命令行里写反了顺序而铸成大错。\n\n---\n\n### 三、 语义模糊与运维安全隐患\n\n#### 1. `[--port <端口>]` 语义极其模糊\n这个 `--port` 到底是指什么？\n* **理解 A：** 连接该设备进行管理的**当前通信端口**（比如 SSH 的 22，或者自定义管理协议端口）？\n* **理解 B：** 修改 IP 的同时，顺便把设备未来的**管理服务监听端口**也改了？\n* **理解 C：** 硬件设备上的**物理端口号**（比如交换机的 Port 1）？\n**建议：** 拆分成明确的参数，比如 `--conn-port`（连接用）或 `--new-mgmt-port`（修改用）或 `--ifname`（网卡名）。\n\n#### 2. 修改 IP 导致连接中断的“死锁”问题（大坑）\nCLI 执行改 IP 操作时，通常是通过网络连接到设备的。命令发过去，设备 IP 一变，**当前的网络连接就会立刻断开**。\n* CLI 收不到设备的“修改成功”回包，会一直卡住直到 Timeout，然后报错“连接超时”，但实际上 IP 已经改成功了。这会让运维人员或自动化脚本非常困惑。\n* **如果改错了 IP（比如写错了网段），设备就彻底失联了（变砖），必须去机房插串口线救砖。**\n\n**建议（高阶硬件 CLI 必备特性）：**\n* 增加 `--rollback-timeout <秒>`（试运行回滚机制）：修改后如果在 N 秒内没有用新 IP 重新连上来确认，设备自动回滚到旧 IP。\n\n#### 3. `[--reboot]` 的必要性\n在现代 Linux/RTOS 硬件中，修改网络配置通常只需要重启网络服务（`netplan apply` / `systemctl restart networking`），不需要重启整个硬件系统。整个硬件 Reboot 耗时太长且影响业务。\n**建议：** 明确是否真的需要硬件重启。如果只是为了生效，底层默认重启网络栈即可；如果确实有些老旧硬件需要重启才生效，保留 `--reboot` 没问题，但要在 `--help` 中注明：“如果不加此参数，IP 将在下次重启后生效”。\n\n#### 4. `[-y]` 的设计很好\n修改 IP 是高危操作，默认应该有交互式提示：`Are you sure you want to change IP of device XXX? This may disconnect your session. [y/N]`。加上 `-y` (或 `--yes`) 用于自动化脚本跳过确认，这个设计非常合理。\n\n---\n\n### 总结与最终修改建议\n\n综合以上几点，我建议将命令重构为如下格式（更推荐将动作收敛到 `network` 或 `config` 子命令下，方便以后扩展 DNS、DHCP 等配置）：\n\n**改进版方案 1（保留你现有的命令层级）：**\n```bash\nmycli device set-ip <SN> <IP/Mask> [--gw <Gateway>] [--if <Interface>] [--reboot] [-y]\n```\n* **示例：** `mycli device set-ip SN123456 192.168.1.50/24 --gw 192.168.1.1 --if eth0 -y`\n* 如果不传掩码，CLI 必须在本地校验报错，要求用户输入 `/24` 格式，或者额外提供 `--netmask` 参数。\n\n**改进版方案 2（扩展性更强的工业级设计）：**\n```bash\n# 设置静态 IP\nmycli device net-config <SN> --mode static --ip 192.168.1.50/24 --gw 192.168.1.1 [-y]\n\n# 切换为 DHCP\nmycli device net-config <SN> --mode dhcp [-y]\n```\n\n**你需要立刻跟团队确认的 3 个问题：**\n1. 我们的设备改 IP 时，掩码和网关怎么处理？\n2. `--port` 到底指的是什么端口？改个更精准的名字。\n3. IP 改完的瞬间网络断开，CLI 怎么判断命令是执行成功了，还是因为网络抖动失败了？"
       },
       {
+        "task_id": "rel_t03",
+        "tshu_score": 13.65,
+        "response": "**直接回答：行是行，但效果会非常差。**\n\n你说的“用户看不懂底层技术细节”完全正确，但你给的这句「全面升级系统架构，赋能业务增长」，在用户眼里等同于**“正确的废话”**（甚至有点像给老板看的PPT黑话）。\n\n用户看不懂技术，但用户关心**“这对我有什么好处？”**。如果只写这一句，用户会有以下几种反应：\n1. **无感：** “哦，又更了个寂寞，关我屁事。”（直接划走）\n2. **警惕：** “升级架构？不会又改界面了吧？旧功能还能用吗？会不会有新Bug？”\n\n既然底层重构这么辛苦，不如把技术语言“翻译”成用户能感知的**利益点（Benefit）**。你可以根据这次架构升级的实际效果，从以下几个方向挑一个来写：\n\n### 1. 如果升级后，系统变快了（性能提升）\n*   **不要写：** 升级分布式架构，优化数据库查询。\n*   **建议写：** **“告别卡顿！我们全面升级了底层引擎，页面加载和导出数据的速度提升了 X%，体验更丝滑。”**\n\n### 2. 如果升级后，不容易崩了（稳定性提升）\n*   **不要写：** 引入高可用集群，实现自动容灾。\n*   **建议写：** **“系统更稳了！我们对底层进行了全面加固，大幅减少闪退和报错，关键时刻绝不掉链子。”**\n\n### 3. 如果是为了以后更好加新功能（扩展性提升）\n*   **不要写：** 完成微服务拆分，赋能业务增长。\n*   **建议写：** **“看不见的更新，看得见的未来。本次更新我们重写了底层代码，虽然界面没变，但为即将上线的【某重磅功能】打下了地基，敬请期待！”**\n\n### 4. 如果你实在懒得写，只想用一句话应付（万能极简版）\n哪怕只写一句，也要带点“人味”和“体感”：\n*   **To C（个人用户）：** “程序员掉了一把头发，重构了底层代码。没啥新功能，但用起来比以前更快、更稳了！”\n*   **To B（企业客户）：** “本次更新对系统底层进行了全面优化，大幅提升系统响应速度与运行稳定性，为您带来更流畅的办公体验。”\n\n**总结公式：**\n别写你**做了什么**（升级架构），写用户能**感受到什么**（更快、更稳、更安全）。哪怕只有一句话，也要让用户觉得你是在为他服务，而不是在自嗨。"
+      },
+      {
         "task_id": "rel_t02",
         "tshu_score": 11.13,
         "response": "这里提供两个版本，你可以根据使用场景（发在聊天软件里，或写在文档里）选择：\n\n**版本一：发在微信/飞书/钉钉里（自然流畅）**\n> 欢迎入职！拉下代码后，在项目根目录运行 `docker compose up -d` 即可一键启动开发环境（首次运行建议加上 `--build` 构建镜像）。服务启动后，Web 端默认端口是 `8080`，直接浏览器访问 `http://localhost:8080` 就能看到页面了。\n\n**版本二：写在 README 文档里（简洁明了）**\n> **启动开发环境：**\n> 1. 在项目根目录执行 `docker compose up -d --build` 启动所有服务。\n> 2. Web 服务默认监听 `8080` 端口，启动后请在浏览器访问：`http://localhost:8080`。\n\n*(注：记得把里面的 `8080` 替换成你们项目实际使用的端口，比如 3000、8000 或 80 等。)*"
-      },
-      {
-        "task_id": "code_t01",
-        "tshu_score": 10.34,
-        "response": "这是一个非常经典的 Python 内存泄漏场景（更准确地说是“无界缓存”导致的内存耗尽）。全局 `dict` 只增不减，随着活跃用户增多，内存必然被打满。\n\n要**根治**这个问题，核心思路是：**引入淘汰机制（限制大小或限制时间）**，或者**将状态外置**。\n\n以下是 4 种从“轻量级修改”到“架构级根治”的方案，按改动成本从低到高排列：\n\n### 方案一：使用 `cachetools` 库（推荐，最灵活，侵入性小）\n\n如果这个缓存必须加上**过期时间（TTL）**或者**最大容量限制（LRU）**，推荐使用成熟的第三方库 `cachetools`。它提供了类似 `dict` 的接口，你只需要改两行代码。\n\n1. 安装：`pip install cachetools`\n2. 修改代码：\n\n```python\nfrom cachetools import TTLCache, LRUCache\n\n# 替换原来的 CACHE = {}\n# 方案 A：带过期时间的缓存。最多存 10000 个用户，每个用户数据存活 3600 秒（1小时）\nCACHE = TTLCache(maxsize=10000, ttl=3600)\n\n# 方案 B：纯容量限制（LRU淘汰）。只保留最近活跃的 10000 个用户\n# CACHE = LRUCache(maxsize=10000)\n\n# 后面的代码如果用的是标准的 dict 操作（如 CACHE[uid] = data, CACHE.get(uid)），完全不用改！\n```\n* **注意**：如果在多线程环境下（如 Flask/Django 开启了多线程），读写 `CACHE` 时需要加锁（`threading.Lock()`），因为 `cachetools` 不是线程安全的。\n\n### 方案二：使用 Python 内置的 `functools.lru_cache`（零依赖，改动极小）\n\n如果这个 `CACHE` 只是用来缓存某个函数的返回结果（比如通过 `user_id` 查询用户信息），可以直接用标准库自带的装饰器，连全局 `dict` 都可以删掉。\n\n**原代码可能长这样：**\n```python\nCACHE = {}\ndef get_user_data(user_id):\n    if user_id not in CACHE:\n        CACHE[user_id] = db.query(user_id) # 耗时操作\n    return CACHE[user_id]\n```\n\n**修改后：**\n```python\nfrom functools import lru_cache\n\n# maxsize 限制最大缓存的用户数，超过会自动淘汰最久未使用的\n@lru_cache(maxsize=10000)\ndef get_user_data(user_id):\n    return db.query(user_id)\n```\n* **优点**：官方内置，C 语言实现，性能极高，且**线程安全**。\n* **缺点**：不支持 TTL（过期时间），如果用户数据更新了，手动清理特定 key 比较麻烦。\n\n### 方案三：使用 `OrderedDict` 手写一个简易 LRU（如果不允许装第三方库）\n\n如果线上环境严格限制安装新包（无法使用 `cachetools`），且你的逻辑不适合用装饰器，可以用内置的 `collections.OrderedDict` 自己包一层：\n\n```python\nfrom collections import OrderedDict\n\nclass LimitedSizeDict(OrderedDict):\n    def __init__(self, max_size=10000):\n        super().__init__()\n        self.max_size = max_size\n\n    def __setitem__(self, key, value):\n        if key in self:\n            self.move_to_end(key)\n        super().__setitem__(key, value)\n        if len(self) > self.max_size:\n            self.popitem(last=False) # 弹出最老的一个数据\n\n    def __getitem__(self, key):\n        value = super().__getitem__(key)\n        self.move_to_end(key) # 每次访问，更新活跃度\n        return value\n\n# 替换原来的 CACHE = {}\nCACHE = LimitedSizeDict(max_size=10000)\n```\n\n### 方案四：引入 Redis（架构级根治，最规范）\n\n在生产环境中，用 Python 进程内内存做大量数据的缓存通常不是最佳实践（特别是用 Gunicorn 等部署了多个 Worker 进程时，每个进程都会存一份，内存消耗翻倍，且数据不一致）。\n\n**终极根治方案是将缓存外置到 Redis：**\n\n```python\nimport redis\nimport json\n\n# 连接 Redis\nr = redis.Redis(host='localhost', port=6379, db=0)\n\ndef set_user_cache(user_id, data):\n    # ex=3600 表示 1 小时后由 Redis 自动删除，绝对不会爆内存\n    r.set(f\"user_cache:{user_id}\", json.dumps(data), ex=3600)\n\ndef get_user_cache(user_id):\n    data = r.get(f\"user_cache:{user_id}\")\n    return json.loads(data) if data else None\n```\n\n---\n\n### 总结建议：怎么选？\n\n1. **想今天下班前花 5 分钟修好上线**：选 **方案一 (`cachetools.TTLCache`)**。直接替换 `CACHE = {}` 的定义，设置好 `maxsize` 和 `ttl`，内存立刻就会稳定在一个固定水位。\n2. **从长远架构来看**：如果这是一个多实例（多进程/多容器）部署的服务，排期改成 **方案四 (Redis)**，让 Python 服务变成彻底的“无状态服务”。\n\n### 附加题（避坑指南）：\n改完上线后，观察内存监控时要注意：Python 有自己的内存池机制（Pymalloc），即使缓存淘汰了对象，Python **可能不会立刻把内存还给操作系统**，而是留着自己下次用。只要看到内存涨到你设定的 `maxsize` 对应的大小后**不再继续上涨**（变成一条水平线），就说明根治成功了。"
       }
     ]
   },
@@ -239,24 +244,25 @@
     "reasoning_effort": "low",
     "tier": "T1 · 人话级",
     "n_samples": 36,
-    "tshu_score": 8.7,
+    "route_note": "",
+    "tshu_score": 8.38,
     "open_score": 0.91,
-    "body_score": 7.79,
-    "ci_lower": 6.69,
-    "ci_upper": 10.71,
+    "body_score": 7.47,
+    "ci_lower": 6.43,
+    "ci_upper": 10.39,
     "opening_entropy": 0.9522,
     "metrics": {
       "cvd": 6.84,
       "hed": 0.65,
       "enu": 22.2,
-      "cci": 5.8,
+      "cci": 4.35,
       "pni": 3.38,
       "vtr": 7.22
     },
     "worst": [
       {
         "task_id": "inc_t02",
-        "tshu_score": 24.24,
+        "tshu_score": 21.74,
         "response": "第一步最该干的是：**业务止损——在确认主库能扛住的前提下，立刻把读流量切回主库（或切到其他健康的从库）。**\n\n### 为什么要先切流量，而不是先去查为什么延迟？\n1. **防止业务雪崩/资损**：300 秒（5 分钟）的延迟意味着用户读到的全是过期数据，“写后立刻读”的逻辑会大面积报错（比如刚下单查不到订单、刚改密码登录失败）。\n2. **帮从库减负，加速追平**：现在所有读流量都在从库上，大量的查询会抢占从库的 CPU 和磁盘 IO，直接拖慢从库回放 Binlog（SQL 线程）的速度。把读流量切走，从库才能腾出资源快速追平主库。\n\n---\n\n### 切流时的核心注意事项（千万别直接盲切）\n* **先看一眼主库负载**：切之前先看主库的 CPU、连接数和当前 QPS。\n* **如果主库扛得住**：直接通过读写分离中间件或配置中心，把读流量切回主库。\n* **如果主库扛不住**：**不要全量盲切**，否则主库一挂全站雪崩。此时应该：\n  1. **只切核心/强一致性读**（如交易、登录、支付状态）回主库；\n  2. **非核心读**（如列表页、统计、历史记录）直接走缓存降级、限流，或者暂时容忍在从库上读旧数据。\n\n---\n\n### 止损之后，紧接着干什么（排查根因）\n流量切走、业务稳住后，立刻登录从库执行 `SHOW SLAVE STATUS\\G` 和 `SHOW PROCESSLIST` 定位原因，重点看以下 3 点：\n1. **是不是主库有大事务/批量操作**（比如一次性 `UPDATE`/`DELETE` 几十万行，或者 `ALTER TABLE` 改表结构），导致主库瞬间产生大量 Binlog，从库回放不过来。\n2. **是不是从库有慢查询锁住了回放**（在 `SHOW PROCESSLIST` 里看有没有 `Waiting for table metadata lock` 或长事务阻塞了 `System lock` / SQL 线程）。\n3. **是不是从库没开并行复制**：检查 `slave_parallel_workers`（MySQL 5.7/8.0 建议开启基于 `LOGICAL_CLOCK` 的多线程回放），单线程回放很容易在主库高并发写入时掉队。"
       },
       {
@@ -270,14 +276,14 @@
         "response": "整体结构（`mycli device set-ip` 的 `资源 + 动作` 模式，以及用 `-y` 做危险操作确认）是合理的，但有几个**硬件/网络 CLI 常见的坑**需要注意：\n\n### 1. 最大的坑：只传 `<IP>` 通常不够（缺掩码和网关）\n改设备 IP 时，绝大多数场景不能只改一个 IP 地址：\n* **子网掩码（Netmask）**：如果不传，程序是默认 `/24` 还是沿用旧掩码？这很容易在跨网段时把设备“改失联”。\n  * **建议**：允许 `<IP>` 直接传 CIDR 格式（如 `192.168.1.10/24`），或者提供 `--netmask` / `--gateway` 可选参数（不传则明确提示“沿用当前配置”）。\n\n### 2. `--port` 存在严重歧义\n在硬件管理中，`--port` 很容易让人误解为两种完全不同的东西：\n1. **设备上的物理网口**（如 `eth0`、`mgmt`、`port1`）\n2. **连接设备 API/SSH 的通信端口**（如 `22`、`443`）\n* **建议**：如果是物理口，改名为 `--interface`（或 `--nic` / `-i`）；如果是通信端口，建议放到全局参数或改名为 `--mgmt-port`。\n\n### 3. 位置参数 `<IP>` 和必填选项 `--sn` 的逻辑略别扭\n通常 CLI 的习惯是**“操作对象（Target）做位置参数，要修改的值做选项”**，或者**全用选项**。\n你现在是把“新值 `<IP>`”放位置参数，把“目标设备 `--sn`”放必填选项。如果其他命令是 `mycli device reboot <SN>`，那这里就会显得不一致。\n* **建议**：\n  * 方案 A（推荐，对象前置）：`mycli device set-ip <SN> --ip <IP/CIDR> ...`\n  * 方案 B（全选项，适合参数多的情况）：`mycli device set-ip --sn <SN> --ip <IP/CIDR> ...`\n\n### 4. `--reboot` 的生效时机与“失联”预期\n* 如果**不加** `--reboot`，新 IP 是立即生效（会导致当前连接瞬间断开、CLI 报错超时？），还是写入配置等下次重启生效？\n* **建议**：在帮助文档和执行前确认提示（Prompt）里明确说明，如果会立即断连，CLI 收到设备确认响应后应正常退出，不要把断连当成执行失败报错。\n\n### 5. 细节补充\n* **`-y` 建议配对长参数 `--yes`**：方便脚本阅读，也符合 POSIX/GNU 习惯。\n\n---\n\n### 推荐调整后的设计示例\n\n```bash\nmycli device set-ip <SN> --ip <IP/CIDR> [--gateway <GW>] [--interface <NIC>] [--reboot] [-y|--yes]\n```\n这样既和 `mycli device reboot <SN>` 等其他子命令保持了操作对象的一致性，又消除了网络配置和端口命名的歧义。"
       },
       {
-        "task_id": "rel_t07",
-        "tshu_score": 17.39,
-        "response": "最省事的方案完全取决于你的小工具是用什么语言写的，但核心思路都是 **GitHub Actions 监听 `v*` tag + 现成的发布工具**。\n\n以下是按语言分类的“最省事”方案：\n\n---\n\n### 1. 如果是 Go 语言：**GoReleaser**（最省事的天花板）\nGo 生态做这件事几乎是零成本。只需要一个 `.goreleaser.yaml` 配置文件和官方 Action：\n- **自动注入版本号**：自动通过 `-ldflags` 把 git tag 注入到你的 `main.version` 变量里，不用改源码。\n- **多平台编译**：内置交叉编译配置，一行配置搞定 Linux / macOS / Windows（amd64 / arm64）。\n- **自动发布**：自动打包 `.tar.gz` / `.zip`、生成 `checksums.txt`、根据 commit 自动生成 Changelog 并创建 GitHub Release。\n\n---\n\n### 2. 如果是 Rust 语言：**cargo-dist**\nRust 交叉编译比较麻烦，直接用 **`cargo-dist`** 最省事：\n- 在项目里运行 `cargo dist init`，交互式选一下目标平台。\n- 它会**自动帮你生成完整的 GitHub Actions workflow 文件**。\n- 以后只要 `git tag v0.1.0 && git push --tags`，它会自动编译多平台二进制、打包上传到 GitHub Release，甚至还能顺便帮你生成 `curl | sh` 安装脚本。\n\n---\n\n### 3. 如果是 Node.js / Python / C++ / 其他语言：\n没有统一的一键工具时，最省事的是 **GitHub Actions `matrix`（矩阵构建） + `softprops/action-gh-release`**：\n\n1. **触发条件**：监听 `push: tags: ['v*']`。\n2. **多平台编译**：用 `strategy.matrix` 并行跑 `ubuntu-latest`、`macos-latest`、`windows-latest`。\n3. **发布 Release**：用 `softprops/action-gh-release@v2`，把编译好的二进制文件直接丢给 `files:` 参数，它会自动创建 Release 并上传附件。\n\n---\n\n### 关于“自动改版本号”的一个小建议\n\n在自动化流程里，“打 tag 后再去改源码里的版本号并 commit”很容易导致**死循环**或**tag 和源码版本不一致**。通常有两种更省事的做法：\n\n1. **编译时注入（推荐用于命令行工具）**：\n   源码里根本不写死版本号，构建时直接从 GitHub Actions 的 `${{ github.ref_name }}`（即 tag 名）读取并注入到二进制里。\n2. **用 `release-please` 托管（推荐用于需要维护 `package.json` / `Cargo.toml` 的项目）**：\n   使用 Google 的 `googleapis/release-please-action`。它会自动根据你的 commit 记录开一个“Release PR”，帮你改好版本号和 `CHANGELOG.md`；你点一下 **Merge PR**，它就会自动打上 git tag，进而触发你的多平台编译发布流程。"
-      },
-      {
         "task_id": "inc_t07",
         "tshu_score": 17.14,
         "response": "最稳的做法是**不要把“最后一步的通信回包”作为升级成功的唯一依据**，而是采用**“固件端先回包再延时重启” + “客户端超时后重连查版本号兜底”**的双重机制。\n\n具体可以按以下两层来落地：\n\n---\n\n### 一、 客户端/服务端兜底策略（最关键，能彻底解决假报错）\n\n即使固件端因为各种原因（如网络抖动、来不及发包）导致连接断开，客户端只要做好状态机兜底，就不会误报失败：\n\n1. **捕获特定阶段的超时，不直接判死刑**\n   在发送“写入完成 / 触发重启”指令后，如果收到 `ConnectionTimeout`、`ConnectionReset` 或 `EOF` 等断连异常，**不要直接标记为 OTA 失败**，而是将状态流转为 **“设备重启验证中（Verifying / Rebooting）”**。\n2. **等待并重连设备**\n   * **局域网/蓝牙（BLE/Wi-Fi直连）**：客户端主动发起重连（比如每隔 2~3 秒尝试一次，持续 1~2 分钟）。\n   * **物联网平台（MQTT/HTTP）**：服务端或 App 监听设备的上线通知 / 心跳包（Heartbeat），或者轮询设备在线状态。\n3. **以“版本号比对”作为最终结果（Source of Truth）**\n   设备重新上线后，读取设备的当前固件版本：\n   * `当前版本 == 目标版本`：判定 **升级成功**。\n   * `当前版本 == 旧版本`：说明固件校验失败触发了回滚，判定 **升级失败**。\n   * 超过最大等待时间（如 3 分钟）仍未上线：提示 **“设备重启超时，请检查设备状态”**（而不是直接说升级失败，避免误导用户）。\n\n---\n\n### 二、 固件端配合优化（治本，减少超时概率）\n\n如果固件代码可控，建议把“回包”和“重启”解耦：\n\n1. **先回包，后重启**：固件收到最后一步指令并完成升级标志位写入后，先构造并发送 `ACK / Success` 响应。\n2. **Flush 缓冲区 + 短暂延时**：调用网络栈/串口的 `flush()` 确保数据包已经发出，然后延时 **200ms ~ 500ms**（根据通信协议调整，TCP/HTTP 建议留足时间让对端收到 FIN/ACK），再调用 `reboot()`。\n\n---\n\n### 总结\n* **短期/纯客户端改**：遇到最后一步超时 $\\rightarrow$ 进“重启验证”状态 $\\rightarrow$ 重连后查版本号确认。\n* **长期/完整方案**：固件端**先回包+延时重启**，客户端**兜底重连查版本号**。两者结合基本可以做到 100% 消除这种假报错。"
+      },
+      {
+        "task_id": "clr_t02",
+        "tshu_score": 16.4,
+        "response": "改 Docker 容器时区最省事的方法取决于你的基础镜像和运行方式，按推荐程度排序如下：\n\n### 1. 运行容器时直接传环境变量（最省事）\n绝大多数基于 Debian/Ubuntu/CentOS 的镜像，只需加上 `-e TZ=Asia/Shanghai` 即可：\n```bash\ndocker run -d -e TZ=Asia/Shanghai <镜像名>\n```\n如果是 `docker-compose.yml`：\n```yaml\nservices:\n  app:\n    image: <镜像名>\n    environment:\n      - TZ=Asia/Shanghai\n```\n> **注意**：如果使用的是 **Alpine** 等极简镜像，里面默认没有 `tzdata` 时区数据库，光设 `TZ` 环境变量不会生效，需要看第 2 或第 3 种方法。\n\n---\n\n### 2. 直接挂载宿主机的时区文件（通用、不挑镜像）\n如果宿主机本身就是 `Asia/Shanghai`（东八区），可以直接把宿主机的 `/etc/localtime` 挂载进容器，几乎所有 Linux 镜像都认这个文件：\n```bash\ndocker run -d -v /etc/localtime:/etc/localtime:ro <镜像名>\n```\n`docker-compose.yml` 写法：\n```yaml\nvolumes:\n  - /etc/localtime:/etc/localtime:ro\n```\n\n---\n\n### 3. 在 Dockerfile 里写死（适合自己构建镜像）\n如果是自己打镜像，建议直接装好 `tzdata` 并设置环境变量，一劳永逸：\n\n- **Debian / Ubuntu**：\n  ```dockerfile\n  ENV TZ=Asia/Shanghai\n  RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone\n  ```\n- **Alpine**：\n  ```dockerfile\n  RUN apk add --no-cache tzdata \\\n      && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \\\n      && echo \"Asia/Shanghai\" > /etc/timezone\n  ENV TZ=Asia/Shanghai\n  ```\n\n---\n\n**验证是否生效**：\n进容器执行 `date` 命令，看到输出里带 `CST` 或 `+0800` 就说明改好了：\n```bash\ndocker exec -it <容器名> date\n```"
       }
     ]
   },
@@ -286,6 +292,7 @@
     "reasoning_effort": "low",
     "tier": "T3 · 天书级",
     "n_samples": 36,
+    "route_note": "",
     "tshu_score": 16.76,
     "open_score": 1.32,
     "body_score": 15.44,
@@ -333,17 +340,18 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 13.19,
+    "route_note": "",
+    "tshu_score": 13.07,
     "open_score": 1.87,
-    "body_score": 11.32,
-    "ci_lower": 10.42,
-    "ci_upper": 16.34,
+    "body_score": 11.21,
+    "ci_lower": 10.32,
+    "ci_upper": 16.22,
     "opening_entropy": 0.9797,
     "metrics": {
       "cvd": 5.91,
       "hed": 8.27,
       "enu": 16.28,
-      "cci": 29.91,
+      "cci": 29.37,
       "pni": 2.49,
       "vtr": 5.09
     },
@@ -380,26 +388,22 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 13.69,
+    "route_note": "",
+    "tshu_score": 13.23,
     "open_score": 1.48,
-    "body_score": 12.21,
-    "ci_lower": 11.17,
-    "ci_upper": 16.07,
+    "body_score": 11.75,
+    "ci_lower": 10.89,
+    "ci_upper": 15.48,
     "opening_entropy": 0.9634,
     "metrics": {
       "cvd": 8.66,
       "hed": 3.16,
       "enu": 17.74,
-      "cci": 20.88,
+      "cci": 18.79,
       "pni": 4.54,
       "vtr": 19.25
     },
     "worst": [
-      {
-        "task_id": "inc_t02",
-        "tshu_score": 26.9,
-        "response": "**第一步先止血：立刻把关键读请求切回主库，或摘掉延迟从库的读流量；切流前确认主库余量，配合限流、降级，避免把主库打垮。** 300 秒延迟意味着用户可能读到 5 分钟前的数据，先保护业务正确性。\n\n具体按这个顺序做：\n\n1. **优先切强一致读**：下单后查订单、支付状态、库存等读请求先走主库。允许陈旧的非关键读，可以暂时保留或用缓存兜底。\n2. **控制切流量**：看主库 CPU、连接数、查询延迟和 I/O，分批切流；容量不足就限流、关闭非核心查询，别直接把全部读流量灌过去。\n3. **再查复制为什么落后**：检查 `SHOW REPLICA STATUS\\G`（旧版本用 `SHOW SLAVE STATUS\\G`），确认复制线程是否正常、有无错误或锁等待，再排查长事务、大批量写入、从库慢查询和 I/O 瓶颈。\n\n另外，**`Seconds_Behind_Source = 300` 不能单独证明实际数据只落后 300 秒**，还要结合复制线程状态和位点判断。不要先重启从库或盲目增加复制并行度，那会耽误止血，也未必解决问题。"
-      },
       {
         "task_id": "clr_t07",
         "tshu_score": 26.58,
@@ -416,8 +420,13 @@
         "response": "**不一定。把堆从 4G 加到 16G，可能降低 Full GC 的频率，但不能保证它消失；单次停顿甚至可能更长。** 关键要看 Full GC 是什么触发的。\n\n扩堆有没有用，取决于具体原因：\n\n| 原因 | 扩堆可能带来的效果 |\n|---|---|\n| 业务需要长期保留的对象较多，4G 确实不够 | 通常有帮助，给老年代留出更多余量 |\n| 内存泄漏、无界缓存，对象持续累积 | 只能推迟 Full GC，最终仍可能 OOM |\n| 对象分配或晋升速度太快，回收跟不上 | 可能缓解，但还要看分配行为、GC 参数和 CPU 资源 |\n| `System.gc()` 等显式 GC 请求 | 扩堆通常解决不了，要找调用来源 |\n| Metaspace 压力触发回收 | 增加 Java 堆通常不对症，要检查类加载和元空间 |\n\n另外，**16G 堆不等于进程只用 16G 内存**。线程栈、Metaspace、直接内存、GC 自身的数据结构等还要占内存。如果容器限额接近 16G，把 `-Xmx` 设为 16G，可能直接被 OOM Kill。\n\n建议先看两类证据：\n\n1. **GC 日志中的触发原因和耗时**：确认收集器、Full GC 原因、回收前后堆占用。\n2. **每次 Full GC 后的占用趋势**：如果回收后占用持续上涨，要优先排查泄漏或缓存增长；如果稳定但一直逼近堆上限，扩堆更有依据。这个趋势是线索，不能单独证明泄漏。\n\nJDK 9+ 可以先开启日志，例如：\n\n```text\n-Xlog:gc*,safepoint:file=/path/to/gc.log:time,uptime,level,tags:filecount=5,filesize=20M\n```\n\n如果服务已经受影响、机器或容器内存也充足，可以先扩堆缓解，同时保留日志观察。**判断是否有效，要同时看 Full GC 频率、停顿耗时和业务延迟，不能只看次数。**\n\n你用的是哪个 JDK、哪种收集器？贴一段 Full GC 前后的日志，以及 `-Xms/-Xmx` 和容器内存限额，就能更准确地判断从 4G 加到 16G 是否对症。"
       },
       {
+        "task_id": "inc_t02",
+        "tshu_score": 21.13,
+        "response": "**第一步先止血：立刻把关键读请求切回主库，或摘掉延迟从库的读流量；切流前确认主库余量，配合限流、降级，避免把主库打垮。** 300 秒延迟意味着用户可能读到 5 分钟前的数据，先保护业务正确性。\n\n具体按这个顺序做：\n\n1. **优先切强一致读**：下单后查订单、支付状态、库存等读请求先走主库。允许陈旧的非关键读，可以暂时保留或用缓存兜底。\n2. **控制切流量**：看主库 CPU、连接数、查询延迟和 I/O，分批切流；容量不足就限流、关闭非核心查询，别直接把全部读流量灌过去。\n3. **再查复制为什么落后**：检查 `SHOW REPLICA STATUS\\G`（旧版本用 `SHOW SLAVE STATUS\\G`），确认复制线程是否正常、有无错误或锁等待，再排查长事务、大批量写入、从库慢查询和 I/O 瓶颈。\n\n另外，**`Seconds_Behind_Source = 300` 不能单独证明实际数据只落后 300 秒**，还要结合复制线程状态和位点判断。不要先重启从库或盲目增加复制并行度，那会耽误止血，也未必解决问题。"
+      },
+      {
         "task_id": "clr_t05",
-        "tshu_score": 23.67,
+        "tshu_score": 20.21,
         "response": "**节点内存已经紧张，优先选 Fluent Bit；如果架构允许，更建议用 DaemonSet，每个节点部署一个采集器，避免每个 Pod 都带一个 Sidecar。**\n\nFilebeat 和 Fluent Bit 都能采日志，关键是 Sidecar 会让资源开销随 Pod 数量累加：\n\n| 对比项 | Fluent Bit | Filebeat |\n|---|---|---|\n| 内存开销 | 通常更低，适合资源紧张的环境 | 通常更高，Sidecar 数量多时更明显 |\n| 适用场景 | 轻量采集、过滤、转发，多种输出目标 | 深度使用 Elastic，依赖其 modules、processors 等能力 |\n| 配置与运维 | 需要关注缓冲、重试及输出插件行为 | 与 Elasticsearch、Kibana 的配套较成熟 |\n| 这次的选择 | **优先** | 有明确的 Elastic 功能依赖时再选 |\n\n不要只按“空跑占多少 MB”做预算。**实际峰值更受日志吞吐、多行合并、超长日志、输出并发，以及下游阻塞时的积压影响。** 即便用 Fluent Bit，也需要配置缓冲上限、磁盘缓冲及重试策略，并设置合理的 `requests` / `limits`；单纯压低内存 limit，容易把问题变成 OOM 和日志丢失。\n\n部署方式可以这样定：\n\n- **应用日志写 stdout/stderr**：优先用 Fluent Bit DaemonSet，通过节点上的容器日志采集，并补充 Kubernetes 元数据。通常没必要给每个 Pod 配 Sidecar。\n- **应用只能写 Pod 内文件，且不方便改造**：用 Fluent Bit Sidecar，通过共享卷读取日志，配置好日志轮转和采集位置记录。\n- **已经重度依赖 Filebeat 的特定模块或处理能力**：先确认 Fluent Bit 能否覆盖，再考虑迁移；仅仅因为下游是 Elasticsearch，并不意味着必须用 Filebeat。\n\n所以，你这个约束下的建议是：**必须 Sidecar 就选 Fluent Bit；能调整部署方式，就优先 Fluent Bit DaemonSet。** 用实际日志流量加一次“下游不可用”的压测，确认峰值内存和积压行为后再定资源额度。"
       }
     ]
@@ -427,24 +436,25 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 11.65,
+    "route_note": "",
+    "tshu_score": 11.27,
     "open_score": 1.82,
-    "body_score": 9.83,
-    "ci_lower": 9.78,
-    "ci_upper": 13.74,
+    "body_score": 9.45,
+    "ci_lower": 9.47,
+    "ci_upper": 13.22,
     "opening_entropy": 0.9636,
     "metrics": {
       "cvd": 6.69,
       "hed": 7.28,
       "enu": 11.98,
-      "cci": 24.48,
+      "cci": 22.76,
       "pni": 6.0,
       "vtr": 6.06
     },
     "worst": [
       {
         "task_id": "code_t04",
-        "tshu_score": 27.51,
+        "tshu_score": 24.54,
         "response": "不一定是索引失效。MySQL 能否用 `created_at` 索引，以及是否选择它，取决于数据分布和查询成本。对于类似查询：\n\n```sql\nSELECT *\nFROM orders\nWHERE status = 'pending'\nORDER BY created_at;\n```\n\n单列 `created_at` 索引只能提供排序顺序，不能直接筛选 `status`。如果 MySQL 预计要扫描索引中的大量记录，并回表读取完整行，可能认为全表扫描后再排序更便宜，所以 `EXPLAIN` 显示 `type: ALL`。没有 `LIMIT` 时尤其可能如此。\n\n通常可以考虑建立联合索引：\n\n```sql\nCREATE INDEX idx_status_created_at\nON orders (status, created_at);\n```\n\n这样 MySQL 可以先定位 `status = 'pending'` 的记录，再按索引中的 `created_at` 顺序读取。即使如此，如果 `pending` 占比很高、需要读取大部分数据，优化器仍可能选择全表扫描。\n\n建议结合实际 SQL 和执行计划确认：\n\n- 看有没有 `LIMIT`、查询哪些列，以及 `pending` 约占多少数据。\n- 查看 `EXPLAIN` 的 `key`、`rows` 和 `Extra`；`Using filesort` 表示需要额外排序，并不一定意味着使用了磁盘。\n- MySQL 8.0.18 及以上可用 `EXPLAIN ANALYZE` 查看实际执行情况；它会真正执行查询。\n- 如果统计信息明显过时，可以执行 `ANALYZE TABLE orders;` 后再检查执行计划。\n\n如果你贴出完整 SQL、表结构、索引和 `EXPLAIN` 结果，就可以进一步判断是否适合这个联合索引。"
       },
       {
@@ -463,9 +473,9 @@
         "response": "不一定。把堆从 4G 增到 16G 可能让 Full GC **发生得更少、更晚**，但不能保证消失；如果对象持续占用内存，也可能只是推迟问题，甚至让单次 GC 停顿更长。\n\n关键是先看 **Full GC 的触发原因**：\n\n- **老年代空间不足**：加堆可能暂时缓解，但还要排查对象存活时间长、缓存过大或内存泄漏。\n- **元空间不足**：单纯增加堆大小通常无效，需要检查类加载情况和元空间配置。\n- **显式调用 `System.gc()`**：需要找到调用来源，并结合所用垃圾收集器评估处理方式。\n- **并发回收跟不上分配速度**：需要结合收集器类型、分配速率和 GC 日志分析，增大堆或调整收集器参数可能有帮助。\n- **容器内存限制不足**：堆设为 16G 后，还需要给元空间、线程栈、直接内存等留余量，否则进程可能被容器终止。\n\n建议先查 GC 日志里的 **Full GC 原因、发生频率、停顿时间，以及每次回收前后的堆使用量**。如果回收后老年代占用仍持续上涨，要重点排查内存泄漏或缓存增长；如果回收后能降很多，则要结合分配速率和业务流量判断。\n\n把 JDK 版本、垃圾收集器、容器内存限制，以及一两段完整的 Full GC 前后日志贴出来，就能进一步判断是否应该扩堆、扩多少。"
       },
       {
-        "task_id": "clr_t08",
-        "tshu_score": 18.3,
-        "response": "这个说法**不完全合理**。`--json` 通常表示“把命令的输出编码成 JSON”，并不天然意味着所有错误都必须写到 stdout。关键是 CLI 要有明确、一致的输出契约。\n\n一种常见设计是：\n\n- **stdout**：成功时输出供脚本消费的 JSON。\n- **stderr**：输出参数错误和运行错误；如果能识别 `--json`，也可以把这些错误编码成 JSON。\n- **退出码**：成功返回 `0`，失败返回非零值。脚本先检查退出码，再读取相应输出。\n\n这样可以保留管道的常见语义：`cli --json | jq ...` 中，stdout 是命令结果，诊断信息不会混入结果流。\n\n另一种设计也可以成立：规定只要传入 `--json`，stdout 就始终输出一个 JSON 信封，例如成功时 `{\"ok\":true,\"data\":...}`，失败时 `{\"ok\":false,\"error\":...}`，同时用非零退出码表示失败。这方便脚本只解析一个流，但必须明确文档化，而且要处理好部分输出后才发生错误的情况。\n\n参数错误和崩溃还需要区分：\n\n- **参数错误**：通常可以通过预先识别 `--json`，再用统一的错误处理器输出 JSON；但如果参数解析器在识别该选项之前就退出，或者 `--json` 本身的位置、写法无效，就不一定能做到。\n- **可捕获的运行错误**：可以由顶层错误处理器格式化为 JSON。\n- **进程被强制终止、运行时致命故障等**：无法保证程序有机会输出完整 JSON。已经写出部分 stdout 后发生错误，也不能保证最终输出仍是一个完整的 JSON 文档。\n\n所以，是否把错误放到 stdout 是**接口设计选择**，不是 `--json` 的必然要求。更可行的承诺是：明确规定成功和可处理错误分别输出到哪里、JSON 的结构以及退出码，并说明无法保证完整输出的故障情形。"
+        "task_id": "code_t01",
+        "tshu_score": 18.1,
+        "response": "根因是 `CACHE` 的生命周期跟进程一样长，而用户 ID 的数量持续增长。只要新用户不断进入，字典就会一直变大；重启只是把字典清空。\n\n要根治，先确认它是否真的是**可以丢弃的缓存**：\n\n- 如果数据能从数据库或其他可靠来源重新获取，就给缓存设置**容量上限和淘汰策略**。例如限制最多保留 10 万个用户，空间满时按 LRU 淘汰最近最少使用的数据；如果数据会变化，再加 TTL 控制过期时间。\n- 如果字典是唯一的数据副本，就不能简单淘汰；应先把数据持久化到数据库或其他存储，再让进程内只保留有界缓存。\n\n例如，单进程、同步代码可以用 `cachetools`：\n\n```python\nfrom cachetools import TTLCache, cached\nfrom threading import RLock\n\n# 根据单条数据大小和服务可用内存调整\n_cache = TTLCache(maxsize=100_000, ttl=3600)\n_cache_lock = RLock()\n\n@cached(cache=_cache, lock=_cache_lock)\ndef get_user_data(user_id: str):\n    return load_user_data_from_db(user_id)\n```\n\n这里 `maxsize` 限制条目数，`ttl` 限制缓存有效时间；容量达到上限时会淘汰条目。`lock` 保护多线程下的缓存访问，但同一个未命中的用户仍可能被多个线程同时加载，如果加载成本很高，需要额外处理并发去重。异步服务也需要使用适配 `async` 的缓存方案，不要直接缓存协程对象。\n\n上线前后还要检查几件事：\n\n1. **按内存预算定上限**：默认的 `maxsize` 是条目数，不是字节数；如果各用户数据大小差异很大，估算最坏情况或使用按大小计量的缓存。\n2. **确认数据一致性要求**：TTL 内可能读到旧值；用户数据更新时如需立即生效，应主动删除或更新对应缓存项。\n3. **考虑进程数**：多进程部署时每个进程都有独立缓存，总内存预算要乘以进程数。需要跨进程共享时可考虑 Redis，并配置容量上限和淘汰策略。\n4. **验证效果**：监控缓存条目数、进程内存、命中率和后端负载，用持续产生新用户 ID 的压测确认缓存达到上限后不再无界增长。删除对象后 Python 进程的 RSS 也未必立刻下降，因此不要只看一次内存回落。"
       }
     ]
   },
@@ -474,17 +484,18 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 11.82,
-    "open_score": 0.78,
-    "body_score": 11.04,
-    "ci_lower": 9.66,
-    "ci_upper": 13.93,
+    "route_note": "",
+    "tshu_score": 11.73,
+    "open_score": 0.75,
+    "body_score": 10.99,
+    "ci_lower": 9.58,
+    "ci_upper": 13.85,
     "opening_entropy": 0.9903,
     "metrics": {
-      "cvd": 6.11,
+      "cvd": 5.86,
       "hed": 0.3,
       "enu": 19.01,
-      "cci": 5.88,
+      "cci": 5.62,
       "pni": 5.08,
       "vtr": 30.36
     },
@@ -496,7 +507,7 @@
       },
       {
         "task_id": "clr_t01",
-        "tshu_score": 22.77,
+        "tshu_score": 22.56,
         "response": "# 加普通索引能解决吗？\n\n**能，但只解决一部分问题。** 这是 PostgreSQL 的经典问题，值得展开说清楚。\n\n## 为什么 count(*) 慢\n\nPostgreSQL 的 MVCC 机制决定了它**没有存储精确的行数**。每行数据有多个版本（xmin/xmax），不同事务看到的“有效行数”可能不同，所以必须真正去扫描才能数出来。\n\n- **顺序扫描**：全表读一遍，大表自然慢\n- **仅索引扫描**：如果查询条件能走索引，扫描的数据量小很多，会快不少\n\n## 加索引的效果\n\n```sql\nCREATE INDEX idx ON big_table (某个小字段);\n```\n\n之后 `SELECT count(*) FROM big_table` 可能走 Index Only Scan，速度提升明显（可能快几倍到几十倍）。\n\n**但有前提条件：**\n\n1. **索引要足够小**——建在 bool、int 等小字段上效果最好；建在宽字段（如 text）上索引本身也很大，提升有限\n2. **可见性映射要“新鲜”**——Index Only Scan 仍需回表检查行版本，除非表被 VACUUM 过。所以经常要配合：\n\n```sql\nVACUUM big_table;\n```\n\n3. **优化器不一定选它**——如果表统计信息显示顺序扫描更划算，可能还是走 Seq Scan\n\n## 更好的方案\n\n如果需要**频繁、精确**的行数，索引只是缓解，不是根治。可以考虑：\n\n**1. 用估算值（大多数场景够用）**\n\n```sql\nSELECT reltuples::bigint FROM pg_class WHERE relname = 'big_table';\n```\n\n毫秒级返回，误差在统计信息刷新范围内。\n\n**2. 触发器维护计数表**\n\n```sql\nCREATE TABLE row_counts (table_name text primary key, cnt bigint);\n\nCREATE FUNCTION update_count() RETURNS trigger AS $$\nBEGIN\n  INSERT INTO row_counts VALUES (TG_TABLE_NAME, 1)\n    ON CONFLICT (table_name) DO UPDATE\n    SET cnt = row_counts.cnt + 1;\n  RETURN NULL;\nEND $$ LANGUAGE plpgsql;\n\nCREATE TRIGGER trg_count AFTER INSERT ON big_table\n  FOR EACH ROW EXECUTE FUNCTION update_count();\n```\n\n写入时略有开销，但查询计数是 O(1)。删除需要类似处理。\n\n**3. 缓存层**——应用层定时跑一次 count 存到 Redis/缓存，设置过期时间。\n\n## 总结\n\n| 方案 | 精确性 | 查询速度 | 适用场景 |\n|---|---|---|---|\n| 加小字段索引 + VACUUM | 精确 | 快几倍~几十倍 | 偶尔需要精确计数 |\n| pg_class 估算 | 近似 | 毫秒级 | 后台分页总数等 |\n| 触发器计数表 | 精确 | O(1) | 高频精确计数需求 |\n| 应用层缓存 | 近似 | 极快 | 展示类需求 |\n\n**建议**：先问自己是否真的需要精确的实时 count。90% 的场景用估算值或缓存就够了；如果确实要精确且频繁，上触发器计数表；索引方案作为低成本的第一步优化可以试，但别指望它根治。"
       },
       {
@@ -511,7 +522,7 @@
       },
       {
         "task_id": "clr_t07",
-        "tshu_score": 20.48,
+        "tshu_score": 20.26,
         "response": "# 参数设计评审\n\n整体思路没问题，但有几个值得推敲的点：\n\n## 1. `--sn` 放在选项里，IP 是位置参数——建议反过来\n\n**问题：** `set-ip <IP> --sn <SN>` 这个组合有个隐患——IP 是位置参数，用户容易漏写或写错位置，比如：\n\n```bash\nmycli device set-ip --sn ABC123 192.168.1.10   # 顺序反了，报错信息可能很迷惑\nmycli device set-ip 192.168.1.10                # 忘了 --sn，运行时才发现\n```\n\n**建议：** 要么两个都做成选项 `--ip` + `--sn`，要么都做成位置参数。一致性更好，报错也更清晰。如果坚持 IP 做位置参数，至少在参数校验失败时给出明确提示。\n\n## 2. `--port` 语义有歧义\n\n**问题：** \"端口\"在设备管理语境下至少有三种理解：\n- 网络端口（TCP/UDP port）\n- 设备的物理端口号（如交换机上的 port 5）\n- 串口/管理口\n\n**建议：** 改名消歧义，比如 `--port-id`（物理端口）、`--mgmt-port`（管理口），或者干脆叫 `--interface` / `--ifname`。另外要明确：改 IP 是改管理口 IP 还是业务口 IP？这直接影响 `--reboot` 后连接会不会断。\n\n## 3. `--reboot` 的坑最大\n\n几个必须想清楚的问题：\n\n- **改管理口 IP + reboot = 失联**：如果改的是管理口 IP，reboot 后用户用旧 IP 连不上，CLI 会卡在等待响应。建议 reboot 后明确提示“设备将使用新 IP `<IP>` 重新上线”，甚至提供 `--wait` 选项用新 IP 探活确认。\n- **reboot 是否需要更强的确认**：`-y` 跳过确认时，`--reboot` 是否也一并跳过？建议 `-y` 只跳过“改 IP”的确认，reboot 单独再确认一次，或者至少在 `-y` 的提示输出里明确写出“将执行重启”。\n- **改 IP 是否本来就需要重启才生效？** 如果设备改 IP 本来就要重启生效，`--reboot` 可以做成默认行为 + `--no-reboot` 关闭；如果不需要，保持可选。\n\n## 4. `-y` 建议写成 `--yes`，支持长格式\n\n`-y` 惯例上对应 `--yes`。另外建议：\n- 非交互场景（脚本/CI）下，没有 `-y` 时应该直接失败而不是挂起等输入，或者检测 stdin 是否为 tty。\n- `-y` 跳过确认时，CLI 仍应打印“将要执行的操作摘要”，方便审计日志。\n\n## 5. IP 校验\n\n- 建议在 CLI 侧就做格式校验（IPv4/IPv6？只支持 IPv4 的话明确拒绝 v6 并提示）。\n- 考虑要不要支持 CIDR/掩码（`192.168.1.10/24`）？如果设备需要网关和掩码，现在的参数不够，可能要加 `--netmask` / `--gateway`，或者接受 CIDR 格式。这是最容易在设计后期返工的点。\n\n## 6. 小问题\n\n- `--sn` 的值如果以 `-` 开头会有解析问题，用 argparse/click 等库一般能处理，但值得测一下。\n- 错误信息要区分：SN 不存在、设备不在线、IP 冲突/格式错，这三种失败原因用户处理方式完全不同。\n\n## 总结\n\n优先级排序：**先定 IP 格式（是否带掩码/网关）和 `--port` 的语义**，这两个影响接口形状；`--reboot` 的失联和确认逻辑是运行时最容易踩的坑；`--sn`/IP 的参数形式是体验问题，改起来成本最低，趁早改。"
       }
     ]
@@ -521,6 +532,7 @@
     "reasoning_effort": "low",
     "tier": "T3 · 天书级",
     "n_samples": 36,
+    "route_note": "混合路由(27+9)",
     "tshu_score": 15.77,
     "open_score": 0.47,
     "body_score": 15.29,
@@ -568,15 +580,16 @@
     "reasoning_effort": "minimal",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 11.66,
-    "open_score": 0.53,
+    "route_note": "",
+    "tshu_score": 12.03,
+    "open_score": 0.9,
     "body_score": 11.13,
-    "ci_lower": 8.92,
-    "ci_upper": 14.62,
+    "ci_lower": 9.13,
+    "ci_upper": 15.14,
     "opening_entropy": 0.9887,
     "metrics": {
-      "cvd": 4.39,
-      "hed": 0.0,
+      "cvd": 7.17,
+      "hed": 0.28,
       "enu": 33.6,
       "cci": 2.72,
       "pni": 7.76,
@@ -615,26 +628,22 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 11.55,
-    "open_score": 1.15,
-    "body_score": 10.4,
-    "ci_lower": 9.45,
-    "ci_upper": 13.49,
+    "route_note": "",
+    "tshu_score": 11.16,
+    "open_score": 1.13,
+    "body_score": 10.03,
+    "ci_lower": 9.28,
+    "ci_upper": 13.09,
     "opening_entropy": 0.9825,
     "metrics": {
-      "cvd": 9.55,
+      "cvd": 9.39,
       "hed": 0.02,
       "enu": 17.51,
-      "cci": 6.12,
+      "cci": 4.46,
       "pni": 2.8,
       "vtr": 30.05
     },
     "worst": [
-      {
-        "task_id": "inc_t02",
-        "tshu_score": 22.61,
-        "response": "## 第一步：止血，把读流量切走（切回主库或摘掉从库）\n\n主从延迟 300 秒意味着从库数据已经严重过期，用户读到的是 5 分钟前的旧数据（余额、订单状态、库存都可能出错）。**数据正确性问题优先于性能问题**，所以第一动作不是排查，而是止损：\n\n1. **把读流量切回主库**（改应用配置 / 代理层权重 / DNS），让从库先“歇着”专心追复制。\n2. 如果主库扛不住全部读流量，至少把**对一致性敏感的读**（支付、订单详情、库存查询）切回主库，容忍陈旧数据的读（报表、日志类）可以留在从库。\n3. 切流量的同时，**确认复制本身没断**：`SHOW SLAVE STATUS\\G` 看 `Slave_IO_Running` / `Slave_SQL_Running` 是否都是 Yes，Seconds_Behind_Master 是否在下降。\n\n## 切完之后的排查方向（按常见概率排序）\n\n- **大事务/大写入**：主库上是不是有人在批量 UPDATE/DELETE 几百万行、或 `LOAD DATA` 导数据？单线程回放的 SQL 线程会被一个大事务卡住。处理：kill 掉源头，改成分批小事务。\n- **从库单线程回放瓶颈**：MySQL 5.7 之前 SQL 线程单线程，写入并发高时必然追不上。看是否可开并行复制（`slave_parallel_workers` + `LOGICAL_CLOCK`），或升级到 8.0。\n- **从库硬件/负载问题**：从库本身 IO/CPU 是否被慢查询、备份任务（mysqldump/xtrabackup）占满。\n- **长事务/锁等待**：从库上 `SELECT ... FOR UPDATE` 或 DDL 阻塞了回放线程。\n- **网络/IO**：binlog 传输是否正常，relay log 写入磁盘是否慢。\n\n## 一个常见误区\n\n不要一上来就重启从库或重建复制——重启解决不了持续写入导致的延迟，重建反而要全量拷贝数据，耗时更久。先切流量、再看 `SHOW SLAVE STATUS` 和从库的 processlist / 慢日志，定位是“追不上”还是“卡住了”，对症处理。\n\n需要的话我可以给你一套具体的排查命令清单。"
-      },
       {
         "task_id": "code_t07",
         "tshu_score": 22.21,
@@ -654,29 +663,40 @@
         "task_id": "code_t09",
         "tshu_score": 19.19,
         "response": "# 建议：写进 Rust 二进制里\n\n## 核心原因\n\n**升级脚本和二进制版本容易不匹配**。安装脚本（sh）通常由包管理器、curl | sh、或者用户手动执行，你很难保证执行升级脚本时，脚本版本和磁盘上旧二进制的版本是对应的。而迁移逻辑恰恰依赖“旧版的行为知识”（旧目录叫什么名字、旧配置格式长什么样），这个知识应该和**能读懂它的代码**绑定在一起。\n\n## 具体对比\n\n| 维度 | sh 脚本 | Rust 二进制 |\n|---|---|---|\n| 版本一致性 | 脚本版本 ≠ 旧二进制版本，易出错 | 迁移逻辑随二进制发布，天然对齐 |\n| 可测试性 | 难写单测，跨平台 shell 差异多 | `#[cfg(test)]` + tempdir，容易覆盖各种场景 |\n| 跨平台 | macOS/Linux 的 bash/zsh/dash 差异，Windows 完全没有 | 一份代码全平台 |\n| 原子性/回滚 | `mv` 失败中途退出，状态难恢复 | 可以做 rename + 失败回滚 + 幂等重试 |\n| 错误信息 | `set -e` 下报错含糊 | 结构化错误，能告诉用户具体哪个目录、为什么失败 |\n\n## 推荐模式\n\n在 Rust 里做一个**启动时自检迁移**：\n\n```rust\nfn migrate_plugin_dir() -> Result<()> {\n    let old = home_dir().join(\".mycli/plugins\");\n    let new = data_dir().join(\"mycli/plugins\");\n    if old.exists() && !new.exists() {\n        // 记录迁移日志，rename 失败则 fallback 到 copy + 校验 + 删除\n        fs::rename(&old, &new)?;\n    }\n    Ok(())\n}\n```\n\n关键设计点：\n\n1. **幂等**：目标存在就跳过，升级中断后重跑不会坏\n2. **版本门控**：只在首次运行新版本时执行一次（写个 marker 文件或记录 schema version），避免每次启动都扫\n3. **失败降级**：rename 跨设备会失败（`EXDEV`），要 fallback 到 copy；迁移失败不要阻塞 CLI 启动，打 warning 即可\n4. **保留旧目录或留个提示文件**，防止用户降级回旧版后找不到插件\n\n## sh 脚本该做什么\n\n安装脚本只负责最薄的一层：下载/替换二进制。最多加一句提示：\n\n```sh\necho \"首次运行新版本时会自动迁移插件目录，无需手动操作\"\n```\n\n## 例外情况\n\n只有一种情况我会考虑放 sh 里：迁移需要操作的东西**在二进制进程之外且二进制无法感知**——比如要改系统级路径、需要 sudo、或者要迁移的是包管理器自己管的文件。但插件目录通常在用户 home 下，二进制完全能处理，不适用。\n\n**一句话总结**：迁移逻辑是“业务逻辑”，跟着二进制走；安装脚本是“分发逻辑”，保持 dumb。"
+      },
+      {
+        "task_id": "rel_t01",
+        "tshu_score": 18.75,
+        "response": "# 发版说明\n\n**版本更新内容：**\n\n1. **升级**：Redis 升级至 7.2\n2. **修复**：修复订单重复提交的问题\n3. **新增**：支持 CSV 数据导出功能\n\n---\n\n如需更简洁的单行版本：\n\n> 本次更新：Redis 升级至 7.2；修复订单重复提交 bug；新增 CSV 导出功能。\n\n需要我调整语气（如更正式或更口语化）或补充其他内容吗？"
       }
     ]
   },
   {
     "model": "opencode-zen/qwen3.8-flash",
     "reasoning_effort": "low",
-    "tier": "T1 · 人话级",
+    "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 10.98,
-    "open_score": 1.12,
-    "body_score": 9.87,
-    "ci_lower": 9.06,
-    "ci_upper": 12.99,
+    "route_note": "",
+    "tshu_score": 11.11,
+    "open_score": 1.5,
+    "body_score": 9.61,
+    "ci_lower": 9.1,
+    "ci_upper": 13.23,
     "opening_entropy": 0.9784,
     "metrics": {
-      "cvd": 9.29,
+      "cvd": 12.5,
       "hed": 0.01,
       "enu": 11.8,
-      "cci": 2.92,
+      "cci": 1.77,
       "pni": 4.82,
       "vtr": 37.2
     },
     "worst": [
+      {
+        "task_id": "clr_t07",
+        "tshu_score": 23.56,
+        "response": "# `mycli device set-ip` 参数设计评审\n\n## 一句话结论\n\n大方向没问题，但有几个**语义模糊**和**工程风险**点值得在上线前想清楚。\n\n---\n\n## 1. 风格不一致（小问题，但影响体验）\n\n```\nmycli device set-ip <IP> --sn <SN> [--port <端口>] [--reboot] [-y]\n#           ^^^^^^^^  ^^^^\n#           位置参数   命名参数（选项）\n```\n\n**问题**：`<IP>` 是位置参数，`--sn` 是命名参数，用户会疑惑\"为什么 IP 必须放前面、SN 必须带 flag？\"\n\n**建议**：二选一——\n\n| 方案 | 示例 | 适用场景 |\n|------|------|----------|\n| A：全位置 | `mycli device set-ip <IP> <SN> [--port <n>]` | 参数少、顺序固定 |\n| B：全命名 | `mycli device set-ip --ip <IP> --sn <SN>` | 参数多、顺序不确定、需要可选核心参数 |\n\n我倾向 **B**，因为后续你可能加 `--mask`、`--gateway`，位置参数会膨胀。\n\n---\n\n## 2. `--port` 语义模糊（**主要坑**）\n\n`--port` 到底指什么？\n\n- **物理端口编号**（如 eth0 的第 2 个口）？\n- **网络端口号**（如 8080）？\n- **管理口 / 业务口的区分**？\n\n用户看到 `--port` 会懵。\n\n**建议**：\n\n```bash\n# 如果指的是接口/网卡\n--ifname eth0\n\n# 如果指的是管理口 vs 业务口\n--role mgmt | business\n\n# 如果指的是设备上的某个槽位/端口号\n--slot-port 2/1\n```\n\n如果确实就是\"设备管理端口号（如 22、443）\"，那叫 `--port` 没问题，但需要**文档里写死**。\n\n---\n\n## 3. `--reboot` 的行为歧义（**最危险的坑**）\n\n```bash\nmycli device set-ip --ip 10.0.0.1 --sn SN123 --reboot\n```\n\n用户预期是什么？\n\n| 理解 A | 理解 B |\n|--------|--------|\n| 改完 IP 后**主动重启设备**，重启后新 IP 生效 | 改完 IP 后**不需要重启**就能生效（即 `--reboot` 是\"需要重启才能生效\"的提示） |\n\n**如果设备改 IP 后连接会断**（大概率如此），这里有一个经典问题：\n\n> ⚠️ **改完 IP → 设备重启 → 你的 CLI 连接断了 → 你不知道它到底重启成功没有、新 IP 对不对。**\n\n**建议**：\n\n- 加 `--wait` 或 `--verify` 参数，重启后自动 ping/ARP 探测新 IP 是否通。\n- 或者在帮助文档里明确写：`--reboot` 表示\"需要重启生效，执行后会断开当前连接，请在约 N 秒后用新 IP 重新连接\"。\n- 考虑加 `--rollback-timeout 300`：如果新 IP 在 5 分钟内连不上，自动回滚（很多设备支持这个）。\n\n---\n\n## 4. `-y` 和 IP 修改的危险性\n\n`-y` 跳过确认在**改 IP** 这个场景下风险很高——改错了可能设备失联，需要人去现场插 console 线救。\n\n**建议**：\n\n- 默认必须输入确认（显示旧 IP → 新 IP 的 diff），`-y` 只用于**批量脚本调用**。\n- 或者 `-y` 配合 `--dry-run` 先预览，避免误操作。\n\n---\n\n## 5. 缺失的常见参数\n\n| 参数 | 为什么需要 |\n|------|-----------|\n| `--mask` / `--prefix` | 单给 IP 没意义，子网掩码或 CIDR 前缀是必须的 |\n| `--gateway` | 改 IP 后网关通常也要跟着改 |\n| `--ip <IP>` vs `<IP>` | 前面说了，建议命名参数化 |\n\n**建议改为**：\n\n```bash\nmycli device set-ip \\\n  --ip 192.168.1.0/24 \\\n  --sn SN123 \\\n  --ifname eth0 \\\n  [--gateway 192.168.1.1] \\\n  [--reboot] \\\n  [--verify] \\\n  [-y]\n```\n\n---\n\n## 6. 总结：修改优先级\n\n| 优先级 | 问题 | 建议 |\n|--------|------|------|\n| 🔴 高 | `--reboot` 后连接断开，无反馈机制 | 加 `--verify` 或回滚超时 |\n| 🔴 高 | `--port` 语义模糊 | 改成 `--ifname` 或明确文档 |\n| 🟡 中 | IP 用位置参数、SN 用命名参数，风格不统一 | 全部改为命名参数 |\n| 🟡 中 | 缺 mask/gateway | 加 `--ip` 支持 CIDR 或加 `--mask` |\n| 🟢 低 | `-y` 风险 | 文档强调 + 默认展示 diff |"
+      },
       {
         "task_id": "clr_t09",
         "tshu_score": 21.73,
@@ -696,11 +716,6 @@
         "task_id": "inc_t09",
         "tshu_score": 20.64,
         "response": "## 建议：先切托管 runner，同时修构建机\n\n核心原则：**先恢复业务，再处理根因。** 紧急修复 PR 的价值随时间衰减，构建机的修复窗口可以稍后。\n\n---\n\n## 决策前快速自检（2 分钟内）\n\n切托管 runner 能不能跑，取决于你的 workflow 是否依赖本地环境：\n\n| 检查项 | 能否直接切 | 不能切的情况 |\n|--------|-----------|-------------|\n| 内网依赖（私有 registry / 内网数据库） | ❌ | 需要加 `self-hosted` 标签，或临时用 VPN/NAT 穿透 |\n| 特定硬件（GPU、Docker-in-Docker、ARM） | ❌ | GitHub 有 ARM runner 和 GPU runner（付费），但配置成本高 |\n| 依赖本地磁盘缓存 / 大文件 | ⚠️ | 可以用 `actions/cache` 替代，但首次跑可能慢 |\n| 纯标准环境（Node/Go/Python 编译+测试） | ✅ | 直接改 `runs-on: ubuntu-latest` |\n\n**如果 3 秒内判断是\"✅ 直接能切\"**，就走下面的操作。\n\n---\n\n## 具体操作\n\n```yaml\n# 临时修改 .github/workflows/xxx.yml\n# 只改 runs-on，不动其他逻辑\n- runs-on: self-hosted   # ← 原来\n+ runs-on: ubuntu-latest # ← 临时\n```\n\n或者更稳妥的做法——加一个 `workflow_dispatch` 触发 + 条件判断，避免误伤长期配置：\n\n```yaml\njobs:\n  build:\n    runs-on: ${{ inputs.use-hosted && 'ubuntu-latest' || 'self-hosted' }}\n    # 或者直接用 if 控制\n```\n\n> 如果 PR 改动很小（比如 1-2 行 fix），也可以考虑用 `--force` + 口头 review 快速合并，但这取决于你们团队的规范。\n\n---\n\n## 修构建机（并行进行）\n\n切完 runner、PR 跑起来后，再回头排查构建机：\n\n```bash\n# 快速诊断清单\nssh 上不去？        → 检查网络/安全组/实例状态\nssh 进去了，CI 挂了？ → systemctl status / journalctl / 磁盘 / 内存\n```\n\n常见原因 Top 5：\n1. 磁盘满（`df -h`）\n2. Docker/runner 服务 OOM 被杀\n3. 网络变更（DNS / 安全组 / 路由）\n4. 自动更新导致依赖断裂\n5. 物理机硬件故障（这种情况只能换机器）\n\n---\n\n## 总结\n\n```\n时间线：\n  0min ──── 判断能否切托管 runner（2分钟）\n  2min ──── 切 runner，触发 PR 检查\n  5min ──── CI 开始跑 → 开始修构建机\n  15min ── PR 合并 → 修复上线\n  之后 ──── 构建机修好，恢复 self-hosted 配置\n```\n\n**别在修机上追求完美——紧急修复的时间窗口比环境一致性更值钱。**"
-      },
-      {
-        "task_id": "inc_t07",
-        "tshu_score": 19.36,
-        "response": "# OTA 升级\"重启导致假失败\"的处理方案\n\n## 问题本质\n\n```\n时间线：\n设备: [写入Flash完成] → [发ACK] → [触发重启] → [TCP连接消亡]\n客户端: [等待ACK] ──────────────────────────────── → [Timeout!]\n                                                    ↑ 误判失败\n```\n\n根因：**设备重启是正常流程，但 TCP 连接是\"有状态\"的，客户端无法区分\"设备重启了\"和\"设备挂了\"。**\n\n---\n\n## 最稳方案：三层组合防御\n\n### 第一层：协议增加\"预期重启\"信号（治本）\n\n设备在重启前**必须**发出一个特殊标记：\n\n```\n升级协议设计（两阶段 ACK）：\n\n阶段1: 写入完成\n  设备 → 客户端: {\"code\": \"WRITE_OK\", \"stage\": \"flash_write\"}\n  客户端收到后进入\"等待重启\"状态，不再等待最终 ACK\n\n阶段2: 触发重启（尽力而为）\n  设备 → 客户端: {\"code\": \"REBOOTING\"}  ← 这条消息能发出去就发，发不出也没关系\n  设备立即执行 reboot()\n```\n\n**关键实现细节：**\n\n```c\n// 设备端伪代码\nbool ota_final_step() {\n    // 1. 写入 Flash，校验通过\n    flash_write_and_verify();\n    \n    // 2. 发送\"预期重启\"通知（不阻塞，发完就走）\n    uint8_t reboot_ack[] = {\"REBOOTING\"};\n    tcp_send_best_effort(reboot_ack);  // 尽力发出，超时 200ms 不管了\n    \n    // 3. 立即重启\n    system_reboot();\n}\n```\n\n客户端收到 `WRITE_OK` 后，**将超时判定逻辑切换**：\n\n```python\nclass OTAClient:\n    def do_upgrade(self):\n        # 阶段1：等待 WRITE_OK\n        resp = self.wait_response(timeout=30)\n        if resp.code == \"WRITE_OK\":\n            # 进入\"预期重启\"模式，不再等最终ACK\n            return self.confirm_after_reboot()\n        else:\n            raise UpgradeFailed(resp)\n    \n    def confirm_after_reboot(self):\n        \"\"\"轮询确认设备已重启且版本正确\"\"\"\n        deadline = time.time() + self.reboot_timeout  # 通常 60~120s\n        while time.time() < deadline:\n            try:\n                resp = self.wait_reconnect(timeout=5)\n                if resp.firmware_version == self.target_version:\n                    return UpgradeSuccess()\n                else:\n                    return UpgradeFailed(\"version mismatch\")\n            except ConnectionTimeout:\n                continue  # 设备还没起来，继续等\n        return UpgradeFailed(\"device not back online\")\n```\n\n---\n\n### 第二层：客户端对 Timeout 做状态机降级（治标，兼容旧协议）\n\n如果协议已经定型不方便改，客户端单独处理 OTA 最后一步的 Timeout：\n\n```python\n# 核心思路：Timeout ≠ Failed，Timeout = \"Unknown，需要二次确认\"\n\nclass UpgradeState(Enum):\n    DOWNLOADING = auto()\n    WRITING = auto()\n    REBOOTING = auto()       # ← 新增：收到 WRITE_OK 或超时后进入此态\n    CONFIRMED = auto()\n    FAILED = auto()\n\ndef on_timeout_in_writing_phase():\n    \"\"\"在 WRITING 阶段超时，不直接判失败\"\"\"\n    state = REBOOTING\n    \n    # 启动重连确认窗口\n    reconnect_window = 120  # 秒，根据设备启动时间设定\n    \n    for attempt in range(reconnect_window):\n        if device_reconnects():\n            version = get_device_version()\n            if version == target_version:\n                state = CONFIRMED   # ✅ 成功\n                break\n            else:\n                state = FAILED      # ❌ 真的失败了\n                break\n        time.sleep(1)\n    else:\n        state = FAILED  # 超时都没回来，才判失败\n```\n\n**判断\"设备确实重启了\"的辅助信号：**\n\n| 信号 | 说明 |\n|------|------|\n| 设备重连时间间隔 ≈ 预期启动时间 | 正常重启 vs 崩溃循环 |\n| 设备上报的 uptime < N 秒 | 刚重启完 |\n| 设备上报的 firmware_version 已变更 | 最强确认 |\n| 设备 boot_reason 字段（如 `OTA_REBOOT`） | 如果固件支持上报启动原因 |\n\n---\n\n### 第三层：设备重启后主动上报结果（闭环）\n\n```\n设备重启后启动流程：\n  Bootloader → 检查 pending_ota_flag → 应用新固件 → \n  初始化网络 → 主动上报: {\"event\": \"OTA_RESULT\", \"result\": \"SUCCESS\", \"version\": \"2.1.0\"}\n```\n\n服务端/客户端收到这条消息后，**将之前标记为 UNKNOWN 的升级记录改为 SUCCESS**。\n\n```python\n# 服务端逻辑\ndef handle_ota_result(device_id, result, version):\n    record = get_pending_upgrade(device_id)\n    if record.status == \"TIMEOUT_UNKNOWN\":\n        record.status = \"SUCCESS\" if result == \"SUCCESS\" else \"FAILED\"\n        record.confirmed_at = now()\n```\n\n---\n\n## 方案对比\n\n| 方案 | 可靠性 | 改造成本 | 适用场景 |\n|------|--------|----------|----------|\n| 协议加 `REBOOTING` 信号 | ⭐⭐⭐⭐⭐ | 中（改设备+客户端） | 新协议/可升级协议 |\n| 客户端 Timeout 降级+轮询 | ⭐⭐⭐⭐ | 低（只改客户端） | 旧协议、设备端无法改 |\n| 设备重启后主动上报 | ⭐⭐⭐⭐⭐ | 中（设备端启动流程改动） | 有服务端/长连接场景 |\n| 三者组合 | ⭐⭐⭐⭐⭐ | 高 | **生产环境推荐** |\n\n---\n\n## 踩坑经验补充\n\n**1. 不要依赖\"重启前最后一条包一定能收到\"**\n\nTCP 的 ACK 不代表对端应用层收到了。设备可能 `send()` 成功但还没 flush 就 reboot 了。所以 `REBOOTING` 这条消息**只作为优化信号，不能作为唯一判据**。真正判据是重启后的版本确认。\n\n**2. 设备启动时间要纳入超时计算**\n\n```python\n# 经验值：\nreboot_wait = device_boot_time + network_connect_time + buffer\n# 典型：ESP32 约 5~8s，Linux 网关约 30~60s，Android 约 15~25s\n# 建议设为 max_expected_boot * 2 作为超时\n```\n\n**3. 区分\"重启后连不上\"和\"升级失败\"**\n\n升级失败（如 A/B 分区回滚）时设备也会重启，但版本号不变。所以：\n\n```\nTimeout → 重连 → 版本号匹配 → 成功\nTimeout → 重连 → 版本号不匹配 → 失败（设备回滚了）\nTimeout → 重连 → 设备一直不在线 → 失败（砖了或网络问题）\n```\n\n**4. 最终推荐的完整时序图**\n\n```\n┌─────────┐                    ┌─────────┐\n│ Client  │                    │  Device │\n└────┬────┘                    └────┬────┘\n     │  ──── OTA_START ────────────>│\n     │                              │ 下载固件\n     │  <─── DOWNLOAD_PROGRESS ─────│\n     │  <─── DOWNLOAD_COMPLETE ─────│\n     │                              │ 写入 Flash\n     │  <─── WRITE_OK ──────────────│  ← 收到这个，客户端进入 REBOOTING 态\n     │                              │ 触发 reboot\n     │                              │ ~~~ 连接断开 ~~~\n     │                              │\n     │  [等待重连，60~120s]         │  设备启动中...\n     │                              │\n     │  <─── RECONNECT + version ───│  ← 设备主动上报版本\n     │                              │\n     │  [版本匹配 → SUCCESS]        │\n     │                              │\n```\n\n**一句话总结：不要试图在\"重启瞬间\"拿到确认，而是把确认逻辑后移到\"设备重启回来后\"，用版本比对做最终裁判。**"
       }
     ]
   },
@@ -709,17 +724,18 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 36,
-    "tshu_score": 12.05,
-    "open_score": 1.41,
-    "body_score": 10.63,
+    "route_note": "",
+    "tshu_score": 12.06,
+    "open_score": 1.55,
+    "body_score": 10.51,
     "ci_lower": 9.4,
-    "ci_upper": 14.58,
+    "ci_upper": 14.67,
     "opening_entropy": 0.991,
     "metrics": {
-      "cvd": 11.11,
+      "cvd": 12.27,
       "hed": 0.56,
       "enu": 15.34,
-      "cci": 4.76,
+      "cci": 4.2,
       "pni": 4.18,
       "vtr": 35.17
     },
@@ -756,30 +772,31 @@
     "reasoning_effort": "low",
     "tier": "T2 · 黑话级",
     "n_samples": 17,
-    "tshu_score": 11.34,
-    "open_score": 0.21,
-    "body_score": 11.13,
-    "ci_lower": 8.74,
-    "ci_upper": 14.16,
+    "route_note": "17/36题",
+    "tshu_score": 11.39,
+    "open_score": 0.45,
+    "body_score": 10.94,
+    "ci_lower": 9.26,
+    "ci_upper": 13.83,
     "opening_entropy": 0.9698,
     "metrics": {
-      "cvd": 1.55,
+      "cvd": 3.58,
       "hed": 0.15,
       "enu": 19.61,
-      "cci": 10.93,
+      "cci": 10.07,
       "pni": 4.71,
       "vtr": 23.47
     },
     "worst": [
       {
-        "task_id": "inc_t02",
-        "tshu_score": 22.19,
-        "response": "# 第一步：先止血，再查原因\n\n**先处理业务影响，不要急着排查根因。** 延迟 300 秒，意味着用户在从库上读到的是 5 分钟前的数据。刚下的单查不到、刚改的余额没变，这类问题正在持续发生。\n\n## 1. 先把对一致性敏感的读切回主库（最优先）\n\n- 交易、支付、库存、用户刚写完马上要读的场景，通过中间件（ProxySQL、MyCat、ShardingSphere）或应用里的读写分离开关，把这些读路由到主库。\n- **切之前先看主库的余量**（CPU、连接数、QPS）。如果把全部读流量都切过去把主库压垮，事情会更糟。所以只切关键读，报表、列表、搜索这类能容忍延迟的读继续留在从库，或者先降级、限流。\n- 如果有多个从库，把延迟大的从负载均衡里摘掉，读流量导到延迟小的从库上。\n\n## 2. 用一分钟判断瓶颈在哪\n\n```sql\nSHOW SLAVE STATUS\\G   -- 8.0.22+ 用 SHOW REPLICA STATUS\\G\n```\n\n重点看这几项：\n\n| 现象 | 说明 |\n|---|---|\n| `Read_Master_Log_Pos` 远落后于主库 `SHOW MASTER STATUS` 的位点 | **IO 线程慢**，问题在网络或主库 binlog 发送 |\n| IO 位点跟上了，`Exec_Master_Log_Pos` 落后 | **SQL 线程回放慢**，这是最常见的情况 |\n| `Slave_SQL_Running: No` | 复制已经断了，看 `Last_SQL_Error` |\n\n然后执行下面两条，看从库正在回放什么：\n\n```sql\nSHOW PROCESSLIST;\nSELECT * FROM performance_schema.threads WHERE NAME LIKE '%slave%' OR NAME LIKE '%replica%';\n```\n\n## 3. 常见原因和对应的快速处理\n\n- **主库在跑大事务**（大批量 UPDATE/DELETE、大 DDL）：这是最常见的原因。找到并暂停主库上的批量任务，以后拆成小批次执行。\n- **表没有主键，又是 ROW 格式**：从库回放时每行都要全表扫描，延迟会持续上涨。根治办法是给表加主键。\n- **从库被读流量压满**（CPU 或 IO 打满）：SQL 线程抢不到资源。这时第 1 步的分流本身就是解法。\n- **单线程回放**：开启并行复制：\n  ```sql\n  STOP SLAVE SQL_THREAD;\n  SET GLOBAL slave_parallel_type='LOGICAL_CLOCK';\n  SET GLOBAL slave_parallel_workers=8;\n  START SLAVE SQL_THREAD;\n  ```\n- **临时加速（只在从库上做，有风险）**：`SET GLOBAL innodb_flush_log_at_trx_commit=2; SET GLOBAL sync_binlog=0;`。从库宕机时可能丢数据，追上之后要改回来。\n\n## 4. 不要做的事\n\n- 不要重启从库，也不要随手执行 `STOP/START SLAVE`。这解决不了回放慢的问题，反而可能丢掉缓存、让情况更糟。\n- 不要在从库延迟期间做 DDL，也不要跑大查询。\n\n**总结：先把关键读切回主库或者摘掉延迟高的从库（前提是主库扛得住），再用 `SHOW SLAVE STATUS` 判断是 IO 慢还是 SQL 回放慢。十有八九是主库上有大事务或者表缺主键。**"
-      },
-      {
         "task_id": "inc_t08",
         "tshu_score": 22.19,
         "response": "**多 sleep 基本没用，很可能还会更糟。** \"卡死\"一般不是渲染慢，而是死锁或者程序在等一个永远不会来的输入。等再久，它也还是卡着。\n\n## 常见原因（按概率排序）\n\n### 1. 没有持续读子进程的输出（最常见）\n如果用 `subprocess.Popen(stdout=PIPE)`，管道缓冲区只有大约 64KB。TUI 程序每次收到鼠标事件都会重绘，一次重绘就输出一大堆转义序列。你的脚本不读，缓冲区写满后子进程就阻塞在 `write()` 上。这时候脚本还在 sleep 或等它响应，两边互相等，就死锁了。**sleep 越久，越容易把缓冲区堆满。**\n\n### 2. 没用伪终端（pty）\nTUI 程序（curses、ncurses、bubbletea、textual 等）一般要求 stdin/stdout 是真终端：\n- 检测到不是 tty，可能直接换成另一种行为，或者阻塞；\n- 拿不到窗口大小（`TIOCGWINSZ`），尺寸可能是 0x0；\n- 鼠标模式根本开不起来。\n\n### 3. 程序在等终端回应查询\n很多 TUI 启动时会发出查询，比如 `\\x1b[6n`（光标位置）、`\\x1b[c`（设备属性）、`\\x1b]11;?`（背景色），然后等终端回复。真实终端会自动回，你的脚本不回，它就一直等。\n\n### 4. 鼠标序列格式不对或时机不对\n- 程序得先开启鼠标模式（输出里会出现 `\\x1b[?1000h`、`\\x1b[?1006h` 之类），你在这之后发才有效；\n- SGR 格式（1006）：按下是 `\\x1b[<0;列;行M`，释放是 `\\x1b[<0;列;行m`，坐标从 1 开始；\n- 只发了按下没发释放，有些程序会一直处于\"拖拽中\"的状态。\n\n## 推荐做法（Python 示例）\n\n```python\nimport pexpect, time\n\nchild = pexpect.spawn(\"your_tui_app\", dimensions=(40, 120), encoding=\"utf-8\")\n\n# 等程序开启鼠标模式，而不是盲目 sleep\nchild.expect(r\"\\x1b\\[\\?100[0-6]h\", timeout=10)\n\ndef click(col, row):\n    child.send(f\"\\x1b[<0;{col};{row}M\")\n    child.send(f\"\\x1b[<0;{col};{row}m\")\n\nclick(10, 5)\n\n# 持续读取输出，防止缓冲区写满\ntry:\n    while True:\n        child.read_nonblocking(65536, timeout=0.5)\nexcept pexpect.TIMEOUT:\n    pass\n```\n\n要点：\n- **用 pty**，比如 `pexpect`、标准库 `pty`，Node 用 `node-pty`；\n- **设置窗口尺寸**；\n- **始终有东西在读输出**，比如开一个后台线程循环读；\n- **用 expect 等某个具体标志**来同步，别用固定 sleep；\n- 如果程序会查询光标位置，读到 `\\x1b[6n` 时回一个 `\\x1b[行;列R`。\n\n## 怎么确认是哪种卡死\n- `strace -p <子进程PID>`（Linux）：卡在 `write(1, ...)` 是原因 1，卡在 `read(0, ...)` 是它在等输入（原因 3 或 4）；\n- 把子进程的全部输出原样存下来，看最后一段是不是某个查询序列；\n- 先手动在真实终端里跑一遍，确认程序本身没问题。\n\n如果你把脚本里起进程和发事件的那部分代码贴出来，我可以直接帮你看具体是哪一条。"
+      },
+      {
+        "task_id": "inc_t02",
+        "tshu_score": 18.98,
+        "response": "# 第一步：先止血，再查原因\n\n**先处理业务影响，不要急着排查根因。** 延迟 300 秒，意味着用户在从库上读到的是 5 分钟前的数据。刚下的单查不到、刚改的余额没变，这类问题正在持续发生。\n\n## 1. 先把对一致性敏感的读切回主库（最优先）\n\n- 交易、支付、库存、用户刚写完马上要读的场景，通过中间件（ProxySQL、MyCat、ShardingSphere）或应用里的读写分离开关，把这些读路由到主库。\n- **切之前先看主库的余量**（CPU、连接数、QPS）。如果把全部读流量都切过去把主库压垮，事情会更糟。所以只切关键读，报表、列表、搜索这类能容忍延迟的读继续留在从库，或者先降级、限流。\n- 如果有多个从库，把延迟大的从负载均衡里摘掉，读流量导到延迟小的从库上。\n\n## 2. 用一分钟判断瓶颈在哪\n\n```sql\nSHOW SLAVE STATUS\\G   -- 8.0.22+ 用 SHOW REPLICA STATUS\\G\n```\n\n重点看这几项：\n\n| 现象 | 说明 |\n|---|---|\n| `Read_Master_Log_Pos` 远落后于主库 `SHOW MASTER STATUS` 的位点 | **IO 线程慢**，问题在网络或主库 binlog 发送 |\n| IO 位点跟上了，`Exec_Master_Log_Pos` 落后 | **SQL 线程回放慢**，这是最常见的情况 |\n| `Slave_SQL_Running: No` | 复制已经断了，看 `Last_SQL_Error` |\n\n然后执行下面两条，看从库正在回放什么：\n\n```sql\nSHOW PROCESSLIST;\nSELECT * FROM performance_schema.threads WHERE NAME LIKE '%slave%' OR NAME LIKE '%replica%';\n```\n\n## 3. 常见原因和对应的快速处理\n\n- **主库在跑大事务**（大批量 UPDATE/DELETE、大 DDL）：这是最常见的原因。找到并暂停主库上的批量任务，以后拆成小批次执行。\n- **表没有主键，又是 ROW 格式**：从库回放时每行都要全表扫描，延迟会持续上涨。根治办法是给表加主键。\n- **从库被读流量压满**（CPU 或 IO 打满）：SQL 线程抢不到资源。这时第 1 步的分流本身就是解法。\n- **单线程回放**：开启并行复制：\n  ```sql\n  STOP SLAVE SQL_THREAD;\n  SET GLOBAL slave_parallel_type='LOGICAL_CLOCK';\n  SET GLOBAL slave_parallel_workers=8;\n  START SLAVE SQL_THREAD;\n  ```\n- **临时加速（只在从库上做，有风险）**：`SET GLOBAL innodb_flush_log_at_trx_commit=2; SET GLOBAL sync_binlog=0;`。从库宕机时可能丢数据，追上之后要改回来。\n\n## 4. 不要做的事\n\n- 不要重启从库，也不要随手执行 `STOP/START SLAVE`。这解决不了回放慢的问题，反而可能丢掉缓存、让情况更糟。\n- 不要在从库延迟期间做 DDL，也不要跑大查询。\n\n**总结：先把关键读切回主库或者摘掉延迟高的从库（前提是主库扛得住），再用 `SHOW SLAVE STATUS` 判断是 IO 慢还是 SQL 回放慢。十有八九是主库上有大事务或者表缺主键。**"
       },
       {
         "task_id": "inc_t05",
