@@ -330,6 +330,7 @@ def render_html(
             for item in report.worst[:2]:
                 worst_items.append({
                     "task_id": getattr(item.task, "id", str(item.task)),
+                    "prompt": getattr(item.task, "prompt", ""),
                     "score": round(float(item.metrics.tshu_score), 1),
                     "response": item.sample.response[:240] + ("..." if len(item.sample.response) > 240 else ""),
                 })
@@ -531,11 +532,8 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     </div>
 
     <!-- Notice Strip (Font-sans, clear readable text, no SimSun fallback!) -->
-    <div class="border-x border-b border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 font-sans leading-relaxed flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div>
-        <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜为工程趣味性观测基准，不构成严谨学术结论，具体表现请以实际业务体验为准。采用反向扣分制（分数越低表达越简洁，点击模型行可展开详情）。欢迎提交 PR 贡献新指标与评测算法，下一代榜单正在规划开发中。
-      </div>
-      <div class="text-zinc-500 text-xs font-mono whitespace-nowrap">状态：公开评测 · V3 校验通过</div>
+    <div class="border-x border-b border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 font-sans leading-relaxed">
+      <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜为工程趣味性观测基准，不构成严谨学术结论，具体表现请以实际业务体验为准。采用反向扣分制（分数越低表达越简洁，点击模型行可展开详情）。欢迎提交 PR 贡献新指标与评测算法，下一代榜单正在规划开发中。
     </div>
   </header>
 
@@ -794,10 +792,12 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
               <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 典型高扣分样本</div>
           `;
           item.worst.forEach(w => {{
+            const promptHtml = w.prompt ? `<div class="text-zinc-200 font-sans text-xs sm:text-sm mb-2 bg-zinc-950 border border-zinc-800 px-3 py-2"><span class="text-emerald-400 font-mono font-bold mr-1.5">问：</span>${{w.prompt}}</div>` : '';
             badcasesHtml += `
               <div class="border-t border-zinc-800/80 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 text-sm">
-                <div class="text-red-400 font-semibold mb-1 font-mono text-xs">用例：[${{w.task_id}}] · 扣分：${{w.score}}</div>
-                <div class="text-zinc-300 font-mono text-xs sm:text-sm leading-relaxed bg-zinc-900/60 border border-zinc-800/60 p-3 whitespace-pre-wrap">${{w.response}}</div>
+                <div class="text-red-400 font-semibold mb-1.5 font-mono text-xs">用例：[${{w.task_id}}] · 扣分：${{w.score}}</div>
+                ${{promptHtml}}
+                <div class="text-zinc-300 font-mono text-xs sm:text-sm leading-relaxed bg-zinc-900/60 border border-zinc-800/60 p-3 whitespace-pre-wrap"><span class="text-zinc-400 font-bold mr-1.5">答：</span>${{w.response}}</div>
               </div>
             `;
           }});
