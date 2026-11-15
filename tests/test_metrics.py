@@ -294,3 +294,30 @@ def test_cci_does_not_overpenalize_plain_connective_yiweizhe():
     a = "300 秒延迟意味着用户可能读到 5 分钟前的数据，先保护业务正确性。"
     b = "300 秒延迟表示用户可能读到 5 分钟前的数据，先保护业务正确性。"
     assert score_cci(a)[0] == score_cci(b)[0] == 0.0
+
+
+def test_vtr_sprawl_only_penalizes_section_headers():
+    task = make_task(register="chat")
+    inline_note = "不建议直接删除日志。**注意事项：**文件仍被进程打开时，删除后空间不会立即释放。"
+    section_sprawl = "不建议直接删除日志。\n\n## 注意事项\n文件仍被进程打开时，删除后空间不会立即释放。\n\n## 常见坑\n部分服务目录被删后无法自动重建。"
+    assert score_vtr(task, inline_note)[0] == 0.0
+    assert score_vtr(task, section_sprawl)[0] > 30.0
+
+
+def test_cvd_version_labels_only_exempt_in_doc_register():
+    chat_task = make_task(
+        register="chat",
+        prompt="线上 MySQL 主从延迟 300 秒，现在读流量全在从库，第一步应该先干嘛？",
+        verdict_anchors=["切到主库", "主库"],
+        actionable_entities=["主库", "SELECT"],
+    )
+    doc_task = make_task(
+        register="doc",
+        prompt="帮我写一份新版本发布公告，要求简洁。",
+        verdict_anchors=["Redis 7.2", "CSV"],
+        actionable_entities=["Redis 7.2", "CSV"],
+    )
+    empty_ver = "版本一：这个问题涉及几个方面，需要先把背景梳理清楚。"
+    doc_ver = "这里提供三个版本供选择：\n\n**版本一：标准清晰版**\n- 升级 Redis 7.2\n- 支持 CSV 导出"
+    assert score_cvd(chat_task, empty_ver)[0] == 100.0
+    assert score_cvd(doc_task, doc_ver)[0] == 0.0

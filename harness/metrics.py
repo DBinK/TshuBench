@@ -125,12 +125,8 @@ CRISP_OPENERS = (
     "根源一样",
     "多线程并发",
     "最省事",
-    "版本一",
-    "版本 1",
-    "版本1",
-    "简短版",
-    "群发版",
 )
+DOC_VERSION_OPENERS = ("版本一", "版本 1", "版本1", "简短版", "群发版")
 META_LABEL_RE = re.compile(
     r"^(?:先说结论|直接说结论|结论是|结论|简短的回答是|简短回答是|简短的回答|简短回答|直接回答|一句话总结|一句话)[：:，,\s]*"
 )
@@ -188,7 +184,9 @@ PRONOUN = re.compile(r"它们|它(?!们)|(?<![尤极])其(?!中|他|它|实|次)
 PSEUDO_CONTRAST = re.compile(r"不是[^，。]{1,20}而是|与其说[^，。]{1,20}不如说")
 SUPPORT_CLOSING = re.compile(r"说一声|需要我|要不要我|随时告诉我|如果你希望|如果还需要|如需我")
 SPRAWL_SECTION_RE = re.compile(
-    r"常见坑|不推荐的做法|不推荐|例外情况|什么时候不需要|何时不需要|如果不想|顺便提|注意事项|坑点|补充说明"
+    r"(?m)^\s*(?:#{1,6}\s+|(?:[-*+]|\d+\.)\s+)?\*{0,2}"
+    r"(?:常见坑|不推荐的做法|不推荐|例外情况|什么时候不需要|何时不需要|如果不想|顺便提|注意事项|坑点|补充说明)"
+    r"[^。\n]{0,10}\*{0,2}[：:]?\s*$"
 )
 EM_DASH = re.compile(r"——|(?<![a-zA-Z0-9-])—(?![a-zA-Z0-9-])")
 PATH_OR_RATIO = re.compile(
@@ -235,7 +233,8 @@ def score_cvd(task: Task, text: str) -> tuple[float, float]:
     stripped = text.lstrip("#* \t\r\n")
     stripped = META_LABEL_RE.sub("", stripped).lstrip("#* \t\r\n")
     head = stripped[:70]
-    if any(opener in head for opener in CRISP_OPENERS):
+    openers = CRISP_OPENERS + DOC_VERSION_OPENERS if task.register == "doc" else CRISP_OPENERS
+    if any(opener in head for opener in openers):
         return 0.0, 0.0
     idx = _first_index(stripped, task.answer_anchors)
     if idx is not None:
