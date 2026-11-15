@@ -54,19 +54,7 @@ jobs:
 
           for f in $CHANGED; do
             if [[ "$f" == *.jsonl ]]; then
-              uv run python -c "
-import sys
-from pathlib import Path
-from tshu.score import load_tasks, load_samples_grouped
-tasks = load_tasks('tasks/eval_suite_v2.jsonl')
-grouped = load_samples_grouped(['$f'])
-assert grouped, '$f 没有有效样本'
-for (model, effort), samples in grouped.items():
-    ids = {s.task_id for s in samples if s.task_id in tasks}
-    missing = set(tasks) - ids
-    assert not missing, f'{model} ({effort}) 缺少题目: {sorted(missing)}'
-    print(f'OK: {model} ({effort}) -> {len(ids)}/36 题完整')
-"
+              uv run python -c "from tshu.score import load_tasks, load_samples_grouped; tasks = load_tasks('tasks/eval_suite_v2.jsonl'); grouped = load_samples_grouped(['$f']); assert grouped, '$f 没有有效样本'; [print(f'OK: {m} ({e}) -> {len({s.task_id for s in ss if s.task_id in tasks})}/36') for (m, e), ss in grouped.items()]; assert all(not (set(tasks) - {s.task_id for s in ss if s.task_id in tasks}) for ss in grouped.values()), '缺少题目'"
               uv run tshu score "$f" --out /tmp/pr_check/out --html /tmp/pr_check/index.html
               cat /tmp/pr_check/out/report.md >> /tmp/pr_check/comment.md
             fi
