@@ -313,19 +313,19 @@ def render_html(reports: list[ModelReport]) -> str:
         model_entries.append(entry)
 
         # Static row generation for tests & non-JS fallback
-        cells = "".join(f"<td class='w-24 min-w-[90px] px-3 py-3.5 text-right font-mono text-sm font-semibold text-zinc-200 {('border-l border-zinc-800' if k == 'cci' else '')}'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
+        cells = "".join(f"<td class='px-3 py-3.5 text-right font-mono text-sm font-semibold text-zinc-200 {('border-l border-zinc-800' if k == 'cci' else '')}'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
         route_badge = f" <span class='text-xs text-zinc-400 font-mono'>({route_note_text})</span>" if route_note_text else ""
         medal = "🥇 " if i == 1 else ("🥈 " if i == 2 else ("🥉 " if i == 3 else ""))
         static_rows.append(
             f"<tr class='model-row border-b border-zinc-800 hover:bg-zinc-900/70 transition-colors cursor-pointer' data-rank='{i}'>"
-            f"<td class='w-14 min-w-[56px] px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-400'>{medal}{i}</td>"
-            f"<td class='min-w-[240px] px-4 py-3.5'><div class='flex items-center gap-2'>"
-            f"<span class='font-bold text-[15px] text-zinc-100 tracking-tight font-sans'>{html.escape(display_name)}</span>"
-            f"<span class='text-xs font-mono px-2 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300'>{html.escape(provider)}</span>"
-            f"</div><div class='text-xs font-mono text-zinc-400 mt-1'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
-            f"<td class='w-24 min-w-[96px] px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort'>{effort_text}</td>"
-            f"<td class='w-28 min-w-[110px] px-3 py-3.5 text-center'><span class='tier-tag {tier_cls} text-xs font-mono font-semibold px-2.5 py-1 border'>{tier_str}</span></td>"
-            f"<td class='w-32 min-w-[125px] px-4 py-3.5 text-right border-l border-zinc-800'>"
+            f"<td class='px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-400'>{medal}{i}</td>"
+            f"<td class='px-4 py-3.5 overflow-hidden'><div class='flex items-center gap-2'>"
+            f"<span class='font-bold text-[15px] text-zinc-100 tracking-tight font-sans truncate'>{html.escape(display_name)}</span>"
+            f"<span class='text-xs font-mono px-2 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300 shrink-0'>{html.escape(provider)}</span>"
+            f"</div><div class='text-xs font-mono text-zinc-400 mt-1 truncate'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
+            f"<td class='px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort'>{effort_text}</td>"
+            f"<td class='px-3 py-3.5 text-center'><span class='tier-tag {tier_cls} text-xs font-mono font-semibold px-2 py-0.5 border'>{tier_str}</span></td>"
+            f"<td class='px-3 py-3.5 text-right border-l border-zinc-800'>"
             f"<span class='font-mono text-lg font-bold text-zinc-50' title='95% 置信区间: [{report.ci_lower:.1f}, {report.ci_upper:.1f}]'>{report.tshu_score:.2f}</span>"
             f"</td>"
             f"{cells}</tr>"
@@ -343,7 +343,7 @@ def render_html(reports: list[ModelReport]) -> str:
         ("hed", "HED", "防御叠甲", ""),
     ]
     head_cells = "".join(
-        f"<th data-sort='{k}' class='w-24 min-w-[90px] py-3.5 px-3 text-right cursor-pointer hover:text-white select-none transition-colors group {border_cls}'>"
+        f"<th data-sort='{k}' class='py-3.5 px-3 text-right cursor-pointer hover:text-white select-none transition-colors group {border_cls}'>"
         f"<div class='inline-flex flex-col items-end'>"
         f"<div class='flex items-center gap-1'>"
         f"<span class='font-bold tracking-wider text-xs text-zinc-200 group-hover:text-white font-mono'>{code}</span>"
@@ -520,44 +520,57 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       </div>
     </div>
 
-    <!-- Leaderboard Table -->
+    <!-- Leaderboard Table with Strict Colgroup and Table-Layout Fixed -->
     <div class="overflow-x-auto">
-      <table class="w-full text-left border-collapse" id="leaderboard-table">
+      <table class="w-full text-left border-collapse" id="leaderboard-table" style="table-layout: fixed;">
+        <colgroup>
+          <col style="width: 54px;">   <!-- 1: # -->
+          <col>                        <!-- 2: 模型与厂商 (自动吸收全部剩余宽度) -->
+          <col style="width: 90px;">   <!-- 3: 思考档位 -->
+          <col style="width: 100px;">  <!-- 4: 梯队 -->
+          <col style="width: 108px;">  <!-- 5: 综合得分 / 天书指数: 严格固定 108px，绝不被拉宽 -->
+          <col style="width: 80px;">   <!-- 6: CCI -->
+          <col style="width: 80px;">   <!-- 7: FMT -->
+          <col style="width: 80px;">   <!-- 8: ENU -->
+          <col style="width: 80px;">   <!-- 9: TIC -->
+          <col style="width: 80px;">   <!-- 10: CVD -->
+          <col style="width: 80px;">   <!-- 11: HED -->
+        </colgroup>
         <thead>
           <!-- Top Tier: Category Grouping -->
           <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs font-mono tracking-wider uppercase text-zinc-400 select-none">
             <th colspan="4" class="py-3 px-4 text-left font-semibold">模型基础规格 (Model Spec)</th>
-            <th class="w-32 min-w-[125px] py-3 px-4 text-right font-semibold text-emerald-400 border-l border-zinc-800">综合得分</th>
-            <th colspan="6" class="py-3 px-4 text-center font-semibold border-l border-zinc-800">六维病灶细分扣分（百分制 · Dimension Penalties）</th>
+            <th class="py-3 px-3 text-right font-semibold text-emerald-400 border-l border-zinc-800">综合得分</th>
+            <th colspan="6" class="py-3 px-3 text-center font-semibold border-l border-zinc-800">六维病灶细分扣分（百分制 · Dimension Penalties）</th>
           </tr>
-          <!-- Second Tier: Columns (Strict explicit widths to avoid abnormal width in Score column) -->
+          <!-- Second Tier: Columns -->
           <tr class="border-b border-zinc-800 bg-zinc-950 text-xs text-zinc-300">
-            <th data-sort="rank" class="w-14 min-w-[56px] py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white select-none">
+            <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white select-none">
               <span class="block font-semibold">#</span>
               <span class="block text-xs text-zinc-500 font-mono font-normal mt-0.5 uppercase">Rank</span>
             </th>
-            <th data-sort="name" class="min-w-[240px] py-3.5 px-4 text-zinc-200 font-semibold cursor-pointer hover:text-white select-none">
+            <th data-sort="name" class="py-3.5 px-4 text-zinc-200 font-semibold cursor-pointer hover:text-white select-none">
               <div class="flex items-center gap-1">
                 <span class="font-semibold text-xs">模型与厂商</span>
                 <span class="sort-ind text-zinc-400 text-xs"></span>
               </div>
               <span class="text-xs text-zinc-500 font-mono font-normal block mt-0.5 uppercase">Model / Provider</span>
             </th>
-            <th data-sort="effort" class="w-24 min-w-[96px] py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
+            <th data-sort="effort" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
               <span class="block font-semibold text-xs">思考档位</span>
               <span class="block text-xs text-zinc-500 font-mono font-normal mt-0.5 uppercase">Effort</span>
             </th>
-            <th data-sort="tier" class="w-28 min-w-[110px] py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
+            <th data-sort="tier" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white select-none">
               <span class="block font-semibold text-xs">梯队</span>
               <span class="block text-xs text-zinc-500 font-mono font-normal mt-0.5 uppercase">Tier</span>
             </th>
-            <th data-sort="tshu_score" class="w-32 min-w-[125px] py-3.5 px-4 text-right cursor-pointer hover:text-white select-none sort-active group border-l border-zinc-800">
+            <th data-sort="tshu_score" class="py-3.5 px-3 text-right cursor-pointer hover:text-white select-none sort-active group border-l border-zinc-800">
               <div class="inline-flex flex-col items-end">
                 <div class="flex items-center gap-1">
                   <span class="font-bold text-xs text-zinc-100 group-hover:text-white">天书指数</span>
                   <span class="sort-ind text-zinc-400 text-xs">▲</span>
                 </div>
-                <span class="text-xs text-emerald-400 font-mono font-normal mt-0.5">越低越好</span>
+                <span class="text-[11px] text-emerald-400 font-mono font-normal mt-0.5">越低越好</span>
               </div>
             </th>
             {head_cells}
@@ -654,21 +667,21 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       for (const k of ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed']) {{
         const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
         const borderCls = k === 'cci' ? 'border-l border-zinc-800' : '';
-        detailedTds += `<td class="w-24 min-w-[90px] px-3 py-3.5 text-right font-mono text-sm font-semibold text-zinc-200 ${{borderCls}}">${{val}}</td>`;
+        detailedTds += `<td class="px-3 py-3.5 text-right font-mono text-sm font-semibold text-zinc-200 ${{borderCls}}">${{val}}</td>`;
       }}
 
       tr.innerHTML = `
-        <td class="w-14 min-w-[56px] px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-400">${{medal}}${{item.rank}}</td>
-        <td class="min-w-[240px] px-4 py-3.5">
+        <td class="px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-400">${{medal}}${{item.rank}}</td>
+        <td class="px-4 py-3.5 overflow-hidden">
           <div class="flex items-center gap-2">
-            <span class="font-bold text-[15px] text-zinc-100 tracking-tight font-sans">${{item.name}}</span>
-            <span class="text-xs font-mono px-2 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300">${{item.provider}}</span>
+            <span class="font-bold text-[15px] text-zinc-100 tracking-tight font-sans truncate">${{item.name}}</span>
+            <span class="text-xs font-mono px-2 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300 shrink-0">${{item.provider}}</span>
           </div>
-          <div class="text-xs font-mono text-zinc-400 mt-1"><code>${{item.model}}</code>${{routeBadge}}</div>
+          <div class="text-xs font-mono text-zinc-400 mt-1 truncate"><code>${{item.model}}</code>${{routeBadge}}</div>
         </td>
-        <td class="w-24 min-w-[96px] px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort">${{item.effort}}</td>
-        <td class="w-28 min-w-[110px] px-3 py-3.5 text-center"><span class="tier-tag ${{item.tier_cls}} text-xs font-mono font-semibold px-2.5 py-1 border">${{item.tier}}</span></td>
-        <td class="w-32 min-w-[125px] px-4 py-3.5 text-right border-l border-zinc-800">
+        <td class="px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort">${{item.effort}}</td>
+        <td class="px-3 py-3.5 text-center"><span class="tier-tag ${{item.tier_cls}} text-xs font-mono font-semibold px-2 py-0.5 border">${{item.tier}}</span></td>
+        <td class="px-3 py-3.5 text-right border-l border-zinc-800">
           <span class="font-mono text-lg font-bold text-zinc-50" title="95% 置信区间: [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]">${{item.tshu_score.toFixed(2)}}</span>
         </td>
         ${{detailedTds}}
