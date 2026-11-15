@@ -312,20 +312,21 @@ def render_html(reports: list[ModelReport]) -> str:
         model_entries.append(entry)
 
         # Static row generation for tests & non-JS fallback
-        cells = "".join(f"<td class='px-3 py-3 text-right font-mono text-xs text-zinc-300'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
-        route_badge = f" <span class='text-[10px] text-zinc-400 font-mono'>({route_note_text})</span>" if route_note_text else ""
+        cells = "".join(f"<td class='px-3.5 py-4 text-right font-mono text-sm font-medium text-zinc-300'>{report.metrics[k]:.1f}</td>" for k in METRIC_LABELS)
+        route_badge = f" <span class='text-[11px] text-zinc-400 font-mono'>({route_note_text})</span>" if route_note_text else ""
+        medal = "🥇 " if i == 1 else ("🥈 " if i == 2 else ("🥉 " if i == 3 else ""))
         static_rows.append(
             f"<tr class='model-row border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors cursor-pointer' data-rank='{i}'>"
-            f"<td class='px-3 py-3.5 text-center font-mono text-xs text-zinc-400'>{i}</td>"
-            f"<td class='px-4 py-3.5'><div class='flex items-center gap-2'>"
-            f"<span class='font-semibold text-sm text-zinc-100 tracking-tight'>{html.escape(display_name)}</span>"
-            f"<span class='text-[11px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60'>{html.escape(provider)}</span>"
-            f"</div><div class='text-[11px] font-mono text-zinc-400 mt-0.5'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
-            f"<td class='px-3 py-3.5 text-center font-mono text-xs text-zinc-400 effort'>{effort_text}</td>"
-            f"<td class='px-3 py-3.5 text-center'><span class='tier-pill {tier_cls} text-xs font-medium px-2 py-0.5 rounded-full'>{tier_str}</span></td>"
-            f"<td class='px-4 py-3.5 text-right'><div class='inline-flex items-baseline gap-1.5'>"
-            f"<span class='font-mono text-lg font-bold text-zinc-100'>{report.tshu_score:.2f}</span>"
-            f"<span class='font-mono text-[11px] text-zinc-400'>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
+            f"<td class='px-3 py-4 text-center font-mono text-xs font-semibold text-zinc-400'>{medal}{i}</td>"
+            f"<td class='px-4 py-4'><div class='flex items-center gap-2'>"
+            f"<span class='font-bold text-base text-zinc-100 tracking-tight'>{html.escape(display_name)}</span>"
+            f"<span class='text-[11px] font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60'>{html.escape(provider)}</span>"
+            f"</div><div class='text-xs font-mono text-zinc-400 mt-1'><code>{html.escape(report.model)}</code>{route_badge}</div></td>"
+            f"<td class='px-3 py-4 text-center font-mono text-xs text-zinc-400 effort'>{effort_text}</td>"
+            f"<td class='px-3 py-4 text-center'><span class='tier-pill {tier_cls} text-xs font-semibold px-2.5 py-1 rounded-full'>{tier_str}</span></td>"
+            f"<td class='px-4 py-4 text-right'><div class='flex flex-col items-end'>"
+            f"<span class='font-mono text-2xl font-bold text-zinc-50 leading-none'>{report.tshu_score:.2f}</span>"
+            f"<span class='font-mono text-[11px] text-zinc-400 mt-1'>[{report.ci_lower:.1f}, {report.ci_upper:.1f}]</span>"
             f"</div></td>"
             f"{cells}</tr>"
         )
@@ -342,9 +343,14 @@ def render_html(reports: list[ModelReport]) -> str:
         ("hed", "HED", "防御叠甲"),
     ]
     head_cells = "".join(
-        f"<th data-sort='{k}' class='py-3 px-3 text-right cursor-pointer hover:text-zinc-100 select-none transition-colors'>"
-        f"<span class='block font-semibold tracking-wider text-xs text-zinc-300'>{code}</span>"
-        f"<span class='block text-[11px] font-normal text-zinc-400 mt-0.5'>{desc}</span></th>"
+        f"<th data-sort='{k}' class='py-3.5 px-3.5 text-right cursor-pointer hover:text-white select-none transition-colors group'>"
+        f"<div class='inline-flex flex-col items-end'>"
+        f"<div class='flex items-center gap-1'>"
+        f"<span class='font-bold tracking-wider text-xs text-zinc-200 group-hover:text-white'>{code}</span>"
+        f"<span class='sort-ind text-zinc-400 text-[10px]'></span>"
+        f"</div>"
+        f"<span class='text-[11px] font-normal text-zinc-400 mt-0.5'>{desc}</span>"
+        f"</div></th>"
         for k, code, desc in metric_header_defs
     )
 
@@ -356,7 +362,7 @@ def render_html(reports: list[ModelReport]) -> str:
 <title>TshuBench · 天书榜 | 中文大模型表达负担评测</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {{
@@ -364,8 +370,8 @@ tailwind.config = {{
   theme: {{
     extend: {{
       fontFamily: {{
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"PingFang SC"', '"Noto Sans CJK SC"', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'monospace'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', '"Noto Sans SC"', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
       }},
       colors: {{
         zinc: {{
@@ -381,26 +387,38 @@ tailwind.config = {{
 }}
 </script>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+*, html, body {{
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}}
+
 body {{
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", sans-serif;
   background-color: #09090b;
   color: #f4f4f5;
-  -webkit-font-smoothing: antialiased;
 }}
+
+code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell {{
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-feature-settings: 'tnum' on, 'zero' on;
+}}
+
 .tier-pill.t1 {{
   color: #34d399;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }}
 .tier-pill.t2 {{
   color: #fbbf24;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }}
 .tier-pill.t3 {{
   color: #f87171;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }}
 .filter-btn.active {{
   background-color: #27272a;
@@ -451,7 +469,7 @@ body {{
   <!-- Controls / Filters -->
   <div class="bg-zinc-900/70 border border-zinc-800 rounded-lg p-3.5 mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
     <div class="flex-1 min-w-[220px]">
-      <input type="text" id="search-input" placeholder="🔍 搜索模型名称、厂商、底层代号..." class="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-zinc-600 transition-colors" />
+      <input type="text" id="search-input" placeholder="🔍 搜索模型名称、厂商、底层代号..." class="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-zinc-600 transition-colors font-sans" />
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
@@ -480,13 +498,19 @@ body {{
       <table class="w-full text-left border-collapse" id="leaderboard-table">
         <thead>
           <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs">
-            <th data-sort="rank" class="py-3 px-3 text-center text-zinc-400 font-mono w-12 cursor-pointer hover:text-zinc-100 select-none">#</th>
-            <th data-sort="name" class="py-3 px-4 text-zinc-300 font-semibold cursor-pointer hover:text-zinc-100 select-none">模型与厂商</th>
-            <th data-sort="effort" class="py-3 px-3 text-center text-zinc-400 font-medium cursor-pointer hover:text-zinc-100 select-none">思考档位</th>
-            <th data-sort="tier" class="py-3 px-3 text-center text-zinc-400 font-medium cursor-pointer hover:text-zinc-100 select-none">梯队</th>
-            <th data-sort="tshu_score" class="py-3 px-4 text-right cursor-pointer hover:text-zinc-100 select-none sort-active">
-              <span class="block font-semibold tracking-wider text-xs text-zinc-200">天书指数 ↓</span>
-              <span class="block text-[11px] font-normal text-emerald-400 mt-0.5">越低越讲人话</span>
+            <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono w-12 cursor-pointer hover:text-zinc-100 select-none">#</th>
+            <th data-sort="name" class="py-3.5 px-4 text-zinc-300 font-semibold cursor-pointer hover:text-zinc-100 select-none">模型与厂商</th>
+            <th data-sort="effort" class="py-3.5 px-3 text-center text-zinc-400 font-medium cursor-pointer hover:text-zinc-100 select-none">思考档位</th>
+            <th data-sort="tier" class="py-3.5 px-3 text-center text-zinc-400 font-medium cursor-pointer hover:text-zinc-100 select-none">梯队</th>
+            <th data-sort="tshu_score" class="py-3.5 px-4 text-right cursor-pointer hover:text-white select-none group sort-active">
+              <div class="inline-flex flex-col items-end">
+                <div class="flex items-center gap-1">
+                  <span class="font-bold tracking-wider text-xs text-zinc-200 group-hover:text-white">天书指数</span>
+                  <span class="text-emerald-400 text-xs font-bold">↓</span>
+                  <span class="sort-ind text-zinc-400 text-[10px]"></span>
+                </div>
+                <span class="text-[11px] font-normal text-emerald-400/90 mt-0.5">越低越讲人话</span>
+              </div>
             </th>
             {head_cells}
           </tr>
@@ -570,29 +594,30 @@ body {{
       tr.className = 'model-row border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors cursor-pointer';
       const isExpanded = state.expanded.has(item.model);
 
-      const routeBadge = item.route_note ? ` <span class="text-[10px] text-zinc-400 font-mono">(${{item.route_note}})</span>` : '';
+      const routeBadge = item.route_note ? ` <span class="text-[11px] text-zinc-400 font-mono">(${{item.route_note}})</span>` : '';
+      const medal = item.rank === 1 ? '🥇 ' : (item.rank === 2 ? '🥈 ' : (item.rank === 3 ? '🥉 ' : ''));
 
       let detailedTds = '';
       for (const k of ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed']) {{
         const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
-        detailedTds += `<td class="px-3 py-3 text-right font-mono text-xs text-zinc-300">${{val}}</td>`;
+        detailedTds += `<td class="px-3.5 py-4 text-right font-mono text-sm font-medium text-zinc-300">${{val}}</td>`;
       }}
 
       tr.innerHTML = `
-        <td class="px-3 py-3.5 text-center font-mono text-xs text-zinc-400">${{item.rank}}</td>
-        <td class="px-4 py-3.5">
+        <td class="px-3 py-4 text-center font-mono text-xs font-semibold text-zinc-400">${{medal}}${{item.rank}}</td>
+        <td class="px-4 py-4">
           <div class="flex items-center gap-2">
-            <span class="font-semibold text-sm text-zinc-100 tracking-tight">${{item.name}}</span>
-            <span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">${{item.provider}}</span>
+            <span class="font-bold text-base text-zinc-100 tracking-tight">${{item.name}}</span>
+            <span class="text-[11px] font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">${{item.provider}}</span>
           </div>
-          <div class="text-[11px] font-mono text-zinc-400 mt-0.5"><code>${{item.model}}</code>${{routeBadge}}</div>
+          <div class="text-xs font-mono text-zinc-400 mt-1"><code>${{item.model}}</code>${{routeBadge}}</div>
         </td>
-        <td class="px-3 py-3.5 text-center font-mono text-xs text-zinc-400 effort">${{item.effort}}</td>
-        <td class="px-3 py-3.5 text-center"><span class="tier-pill ${{item.tier_cls}} text-xs font-medium px-2 py-0.5 rounded-full">${{item.tier}}</span></td>
-        <td class="px-4 py-3.5 text-right">
-          <div class="inline-flex items-baseline gap-1.5">
-            <span class="font-mono text-lg font-bold text-zinc-100">${{item.tshu_score.toFixed(2)}}</span>
-            <span class="font-mono text-[11px] text-zinc-400">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</span>
+        <td class="px-3 py-4 text-center font-mono text-xs text-zinc-400 effort">${{item.effort}}</td>
+        <td class="px-3 py-4 text-center"><span class="tier-pill ${{item.tier_cls}} text-xs font-semibold px-2.5 py-1 rounded-full">${{item.tier}}</span></td>
+        <td class="px-4 py-4 text-right">
+          <div class="flex flex-col items-end">
+            <span class="font-mono text-2xl font-bold text-zinc-50 leading-none">${{item.tshu_score.toFixed(2)}}</span>
+            <span class="font-mono text-[11px] text-zinc-400 mt-1">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</span>
           </div>
         </td>
         ${{detailedTds}}
@@ -661,12 +686,12 @@ body {{
     ths.forEach(th => {{
       const key = th.getAttribute('data-sort');
       const sortIndicator = th.querySelector('.sort-ind');
-      if (sortIndicator) sortIndicator.remove();
-      if (key === state.sortKey) {{
-        const ind = document.createElement('span');
-        ind.className = 'sort-ind ml-1 text-zinc-400 text-[10px]';
-        ind.textContent = state.sortAsc ? '▲' : '▼';
-        th.appendChild(ind);
+      if (sortIndicator) {{
+        if (key === state.sortKey) {{
+          sortIndicator.textContent = state.sortAsc ? '▲' : '▼';
+        }} else {{
+          sortIndicator.textContent = '';
+        }}
       }}
     }});
   }}
