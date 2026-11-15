@@ -10,6 +10,7 @@ from pathlib import Path
 
 import typer
 
+from harness.audit import compute_audit_report, print_audit_report
 from harness.run import execute_models, run_demo
 from harness.score import load_tasks, run_scoring
 
@@ -63,6 +64,17 @@ def score_cmd(
 ) -> None:
     """对模型输出 JSONL 执行确定性打分并生成报告。"""
     run_scoring(tasks, list(runs), out, html)
+
+
+@app.command("audit")
+def audit_cmd(
+    runs: list[Path] = typer.Argument(..., help="待体检的模型输出 JSONL 文件列表"),
+    tasks: Path = typer.Option(Path("tasks/eval_suite_v2.jsonl"), help="题目集 JSONL 路径"),
+    n_perm: int = typer.Option(10000, help="配对符号置换检验次数"),
+) -> None:
+    """运行零人工成本统计体检（基线对照、方差贡献、PCA 与配对置换检验）。"""
+    report = compute_audit_report(tasks, list(runs), n_perm=n_perm)
+    print_audit_report(report)
 
 
 @app.command("suite")
