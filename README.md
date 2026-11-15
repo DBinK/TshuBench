@@ -28,7 +28,14 @@
 
 ### 方式一：AI Agent 自动化评测（推荐）
 
-将 [docs/agent-prompt.md](docs/agent-prompt.md) 中的提示词直接复制发送给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等）。Agent 将通过 `npx skills add DBinK/TshuBench` 安装 `tshu-eval` 技能，并自动引导完成 API 凭证确认、36 题全量采样、完整性校验与 PR 准备。
+将以下提示词直接复制发送给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等）：
+
+```markdown
+请帮我评测模型 [请在此填写模型 ID，如 deepseek/deepseek-v4.1-flash]，并准备提交到 TshuBench（天书榜）：
+
+1. 运行 `npx skills add DBinK/TshuBench` 安装 `tshu-eval` 技能。
+2. 加载 `tshu-eval` 技能并严格按照其中的规范与步骤执行评测、校验与 PR 准备。
+```
 
 ### 方式二：手动命令行运行
 
@@ -64,4 +71,3 @@ uvx --from git+https://github.com/DBinK/TshuBench tshu score \
 - [docs/methodology.md](docs/methodology.md)：六大文风病灶定义、AST 语法树判定算法、Schema 与加权体系。
 - [docs/findings.md](docs/findings.md)：17 款主流模型实测分析、分半信度检验与方法论局限。
 - [docs/task-sources.md](docs/task-sources.md)：独立盲测集构建标准与题库扩增规划。
-- [docs/agent-prompt.md](docs/agent-prompt.md)：AI Agent 一键评测引导提示词。
