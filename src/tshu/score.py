@@ -533,7 +533,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
     <!-- Notice Strip (Font-sans, clear readable text, no SimSun fallback!) -->
     <div class="border-x border-b border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 font-sans leading-relaxed flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜纯属图一乐，并非严谨学术研究成果，实际体验请以自身体感为准。采用反向扣分制（分数越低越讲人话，点击模型行可展开诊断）。欢迎 PR 贡献新指标与评测算法，下一代榜单正在制作中。
+        <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜为工程趣味性观测基准，不构成严谨学术结论，具体表现请以实际业务体验为准。采用反向扣分制（分数越低表达越简洁，点击模型行可展开详情）。欢迎提交 PR 贡献新指标与评测算法，下一代榜单正在规划开发中。
       </div>
       <div class="text-zinc-500 text-xs font-mono whitespace-nowrap">状态：公开评测 · V3 校验通过</div>
     </div>
