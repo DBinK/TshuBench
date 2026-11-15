@@ -590,14 +590,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           <col style="width: 80px;">   <!-- 11: 防御叠甲 -->
         </colgroup>
         <thead>
-          <!-- Top Tier: Category Grouping -->
-          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs font-mono tracking-wider text-zinc-400 select-none">
-            <th colspan="4" class="py-3 px-4 text-left font-semibold">模型基础规格</th>
-            <th class="py-3 px-3 text-center font-semibold text-emerald-400 border-l border-zinc-800">综合得分</th>
-            <th colspan="6" class="py-3 px-3 text-center font-semibold border-l border-zinc-800">六维病灶细分扣分（百分制）</th>
-          </tr>
-          <!-- Second Tier: Columns -->
-          <tr class="border-b border-zinc-800 bg-zinc-950 text-xs text-zinc-300">
+          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-xs text-zinc-300">
             <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white select-none">
               <span class="font-semibold text-xs">#</span>
             </th>
