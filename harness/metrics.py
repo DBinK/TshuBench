@@ -1,15 +1,15 @@
-"""M1-M6 六大确定性指标算子（v2.2）。
+"""M1-M6 六大确定性指标算子（V3）。
 
-结合 markdown-it-py AST 与 jieba 词法分析，全部指标保持 100% 确定性计算、零裁判模型，
-直接量化本机工程会话与基准评测实证归纳的六大后训练过对齐病灶：
-- M1（CVD）：首句决断延迟，口语强表态直接零惩罚
-- M2（HED）：防御性叠甲密度，支持强否定与双重否定豁免
-- M3（ENU）：报菜名堆砌与行内代码/分号高密度电报压缩
-- M4（CCI）：纯汉字超长分句、条件嵌套、分号链与正文外显推演思维链痕迹
-- M5（PNI）：悬空裸代号/行号指代与弱动词名物化、欧化被动搭配（豁免括号内联解释与排障单字「被」）
-- M6（VTR）：语言抽动（自动豁免题干引词）、破折号、客服收尾与 AST 跨语域表格墙/过密大纲
+结合 markdown-it-py AST 与确定性词法分析，全部指标保持 100% 确定性计算、零裁判模型，
+按体感区分度与实际方差贡献排序：
+- M1（CCI）：长链绕口与推演外溢（>28 字长分句、条件嵌套、分号链、高频「的」与正文推演痕迹）
+- M2（FMT）：排版强迫与支线膨胀（AST 跨语域表格墙/过密标题/分割线/超额代码块与常见坑/注意事项支线）
+- M3（ENU）：报菜名与电报堆砌（高频顿号/斜杠连发、行内代码与分号高密度压缩）
+- M4（TIC）：套话抽动与模板化（黑话、伪对比、破折号、客服收尾、句长均一与跨题首句同质化）
+- M5（CVD）：首句决断延迟（剥离空泛标签后前 70 字直判锚点与前 120 字实体兜底）
+- M6（HED）：防御性叠甲密度与伪前提骑墙
 
-每个函数返回 0-100 的惩罚分，越高越不说人话。
+每个函数返回 0-100 的惩罚分，越高越不利于快速阅读。
 """
 
 import math
@@ -22,7 +22,6 @@ from harness.text import (
     analyze_markdown,
     char_len,
     clamp,
-    cut_pos,
     han_len,
     per_1000,
     saturate,
@@ -150,37 +149,6 @@ JARGON = (
 ABSOLUTE = ("毋庸置疑", "显而易见", "不可否认", "值得深思", "毫无疑问")
 CONDITION = ("前提是", "情况下", "倘若", "如果", "只要", "一旦", "除非", "尽管", "虽然", "即使")
 CONDITION_RE = re.compile("|".join(sorted(CONDITION, key=len, reverse=True)))
-
-WEAK_VERBS = frozenset(("进行", "加以", "予以", "做出", "作出", "开展", "实现", "完成", "实施"))
-NOMINAL_NOUNS = frozenset(
-    (
-        "工作",
-        "处理",
-        "分析",
-        "优化",
-        "排查",
-        "设计",
-        "调整",
-        "改造",
-        "评估",
-        "部署",
-        "验证",
-        "操作",
-        "管理",
-        "建设",
-        "决定",
-        "判断",
-        "调研",
-        "重构",
-        "讨论",
-    )
-)
-NOMINALIZATION = re.compile(
-    r"(进行|加以|予以|做出|作出|开展|实现|完成)(了|过)?[\u4e00-\u9fa5]{0,6}(的)?"
-    r"[\u4e00-\u9fa5]{0,4}(工作|处理|分析|优化|排查|设计|调整|改造|评估|部署|验证|操作|管理|建设)"
-)
-PASSIVE_PHRASE = re.compile(r"受到|得以|为[^，。！？]{1,8}所")
-PRONOUN = re.compile(r"它们|它(?!们)|(?<![尤极])其(?!中|他|它|实|次)|您的|您(?!们)")
 PSEUDO_CONTRAST = re.compile(r"不是[^，。]{1,20}而是|与其说[^，。]{1,20}不如说")
 SUPPORT_CLOSING = re.compile(r"说一声|需要我|要不要我|随时告诉我|如果你希望|如果还需要|如需我")
 SPRAWL_SECTION_RE = re.compile(
@@ -197,14 +165,6 @@ INLINE_CODE_RE = re.compile(r"`[^`\n]{1,80}`")
 PAREN_ANNOTATION_RE = re.compile(r"（[^）\n]{1,80}）|\([^)\n]{1,80}\)")
 COT_TRACE_RE = re.compile(
     r"更准确地说|换句话说|也就是说|反过来|退一步|归根结底|先看|再看|顺带|中途|排除|推翻|坐实"
-)
-BARE_REF_RE = re.compile(
-    r"(?<![#\n\r\*-])\s*(?:"
-    r"\b(?:R|C|S|P|I|M|D|F|A|B|H|T|G|V)\d{1,2}\b"
-    r"|(?:决策|规则|方案|路径|条件|分支|阶段|步骤|假设|约束|口径)\s*(?:[0-9]{1,2}|[A-D]|[①②③④⑤])"
-    r"|第\s*[0-9一二三四五六七八九十]+\s*(?:条|项|点|步|行|轮)"
-    r"|(?:[A-Za-z0-9_.-]+\.[a-z]{1,4}|\s):\d{2,4}\b"
-    r")(?!\s*[（(:：])"
 )
 
 
@@ -330,46 +290,6 @@ def score_cci(text: str) -> tuple[float, float]:
     return round(saturate(raw, tau=0.02, k=8.0), 2), raw
 
 
-def _count_nominalizations(prose: str, pos_tokens: list[tuple[str, str]]) -> int:
-    clause_stops = frozenset("，。！？；：\n,.!?;:")
-    pos_hits = 0
-    for idx, (word, _) in enumerate(pos_tokens):
-        if word not in WEAK_VERBS:
-            continue
-        for next_word, next_flag in pos_tokens[idx + 1 : idx + 6]:
-            if any(ch in clause_stops for ch in next_word):
-                break
-            if next_flag == "vn" or next_word in NOMINAL_NOUNS:
-                pos_hits += 1
-                break
-    return max(pos_hits, len(NOMINALIZATION.findall(prose)))
-
-
-def score_pni(text: str) -> tuple[float, float]:
-    """M5 欧化名物化与悬空指针：弱动词名物化、欧化被动、显性代词与无内联解释的裸编号。"""
-    prose = strip_code(text)
-    n = char_len(prose)
-    if n == 0:
-        return 0.0, 0.0
-    pos_tokens = cut_pos(prose)
-    nom_count = _count_nominalizations(prose, pos_tokens)
-    passive_count = len(PASSIVE_PHRASE.findall(prose))
-    bare_refs = len(BARE_REF_RE.findall(prose))
-
-    nom = per_1000(nom_count, n, floor=150)
-    passive = per_1000(passive_count, n, floor=150)
-    explicit = per_1000(len(PRONOUN.findall(prose)), n, floor=150)
-    ref_rate = per_1000(bare_refs, n, floor=150)
-
-    raw = clamp(
-        0.40 * clamp(nom / 6.0)
-        + 0.20 * clamp(passive / 6.0)
-        + 0.15 * clamp(explicit / 20.0)
-        + 0.35 * clamp(ref_rate / 4.0)
-    )
-    return round(saturate(raw, tau=0.03, k=6.0), 2), raw
-
-
 def _cv_component(sentences: list[str]) -> float:
     lengths = [char_len(s) for s in sentences]
     if len(lengths) < 3:
@@ -381,8 +301,30 @@ def _cv_component(sentences: list[str]) -> float:
     return clamp((0.45 - cv) / 0.30)
 
 
-def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[float, float]:
-    """M6 语言抽动与排版强迫（AST 表格墙与过密大纲计数、破折号与客服收尾）。"""
+def score_fmt(task: Task, text: str) -> tuple[float, float]:
+    """M2 排版强迫与支线膨胀：AST 跨语域表格墙/过密标题/分割线/超额代码块与独立支线小节。"""
+    md = analyze_markdown(text)
+    prose = md.prose_text
+    n = char_len(prose)
+    if n == 0:
+        return 0.0, 0.0
+    sprawl = len(SPRAWL_SECTION_RE.findall(prose))
+    sprawl_rate = per_1000(sprawl, n, floor=150)
+
+    md_count = 0.0
+    if task.register == "chat":
+        excess_headings = max(0, md.headings - max(2, n // 240))
+        excess_hr = max(0, md.hr_count - 1)
+        excess_code = max(0, md.code_blocks - 2)
+        md_count = md.table_rows * 2.5 + excess_headings * 1.0 + excess_hr * 0.6 + excess_code * 1.5
+    md_rate = md_count * 500.0 / max(150, n)
+
+    raw = clamp(0.65 * clamp(md_rate / 6.0) + 0.35 * clamp(sprawl_rate / 6.0))
+    return round(saturate(raw, tau=0.06, k=5.0), 2), raw
+
+
+def score_tic(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[float, float]:
+    """M4 套话抽动与模板化：黑话（自动豁免题干词）、伪对比、破折号、客服收尾、句长均一与首句熵。"""
     md = analyze_markdown(text)
     prose = md.prose_text
     n = char_len(prose)
@@ -393,24 +335,15 @@ def score_vtr(task: Task, text: str, opening_penalty: float = 0.0) -> tuple[floa
         sum(prose.count(m) for m in active_jargon + ABSOLUTE)
         + len(PSEUDO_CONTRAST.findall(prose))
         + len(SUPPORT_CLOSING.findall(prose))
-        + len(SPRAWL_SECTION_RE.findall(prose))
     )
     tics_rate = per_1000(tics, n, floor=150)
     dash_rate = per_1000(len(EM_DASH.findall(prose)), n, floor=150)
     dash_comp = clamp((dash_rate - 0.5) / 4.0)
 
-    md_count = 0.0
-    if task.register == "chat":
-        excess_headings = max(0, md.headings - max(2, n // 240))
-        excess_hr = max(0, md.hr_count - 1)
-        excess_code = max(0, md.code_blocks - 2)
-        md_count = md.table_rows * 2.5 + excess_headings * 1.0 + excess_hr * 0.6 + excess_code * 1.5
-    md_rate = md_count * 500.0 / n
-
     cv = _cv_component(split_sentences(prose))
-    base_raw = 0.40 * clamp(tics_rate / 8.0) + 0.25 * dash_comp + 0.25 * clamp(md_rate / 4.0) + 0.10 * cv
+    base_raw = 0.45 * clamp(tics_rate / 6.0) + 0.35 * dash_comp + 0.20 * cv
     raw = clamp(0.85 * base_raw + 0.15 * opening_penalty)
-    return round(saturate(raw, tau=0.05, k=8.0), 2), raw
+    return round(saturate(raw, tau=0.04, k=8.0), 2), raw
 
 
 def opening_entropy(texts: list[str]) -> float:
@@ -429,20 +362,20 @@ def opening_entropy(texts: list[str]) -> float:
 
 def evaluate(task: Task, sample: Sample, opening_penalty: float = 0.0) -> ScoredSample:
     text = sample.response
+    cci, cci_raw = score_cci(text)
+    fmt, fmt_raw = score_fmt(task, text)
+    enu, enu_raw = score_enu(text)
+    tic, tic_raw = score_tic(task, text, opening_penalty)
     cvd, cvd_raw = score_cvd(task, text)
     hed, hed_raw = score_hed(task, text)
-    enu, enu_raw = score_enu(text)
-    cci, cci_raw = score_cci(text)
-    pni, pni_raw = score_pni(text)
-    vtr, vtr_raw = score_vtr(task, text, opening_penalty)
 
-    metrics = MetricScores(cvd=cvd, hed=hed, enu=enu, cci=cci, pni=pni, vtr=vtr)
+    metrics = MetricScores(cci=cci, fmt=fmt, enu=enu, tic=tic, cvd=cvd, hed=hed)
     raw = {
+        "cci": round(cci_raw, 4),
+        "fmt": round(fmt_raw, 4),
+        "enu": round(enu_raw, 4),
+        "tic": round(tic_raw, 4),
         "cvd_offset": round(cvd_raw, 2),
         "hed": round(hed_raw, 4),
-        "enu": round(enu_raw, 4),
-        "cci": round(cci_raw, 4),
-        "pni": round(pni_raw, 4),
-        "vtr": round(vtr_raw, 4),
     }
     return ScoredSample(sample=sample, task=task, metrics=metrics, raw=raw)

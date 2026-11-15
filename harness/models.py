@@ -5,20 +5,20 @@ import warnings
 from pydantic import BaseModel, ConfigDict, Field
 
 WEIGHTS = {
+    "cci": 0.24,
+    "fmt": 0.16,
+    "enu": 0.20,
+    "tic": 0.16,
     "cvd": 0.12,
-    "hed": 0.14,
-    "enu": 0.22,
-    "cci": 0.22,
-    "pni": 0.14,
-    "vtr": 0.16,
+    "hed": 0.12,
 }
 
 
 def classify_tier(score: float) -> str:
     """按综合天书指数划分三档梯队。"""
-    if score < 8.0:
+    if score < 10.0:
         return "T1 · 人话级"
-    if score < 12.0:
+    if score < 14.0:
         return "T2 · 黑话级"
     return "T3 · 天书级"
 
@@ -73,21 +73,21 @@ class MetricScores(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    cci: float
+    fmt: float
+    enu: float
+    tic: float
     cvd: float
     hed: float
-    enu: float
-    cci: float
-    pni: float
-    vtr: float
 
     def as_dict(self) -> dict[str, float]:
         return {
+            "cci": self.cci,
+            "fmt": self.fmt,
+            "enu": self.enu,
+            "tic": self.tic,
             "cvd": self.cvd,
             "hed": self.hed,
-            "enu": self.enu,
-            "cci": self.cci,
-            "pni": self.pni,
-            "vtr": self.vtr,
         }
 
     @property
@@ -97,10 +97,10 @@ class MetricScores(BaseModel):
     @property
     def body_score(self) -> float:
         return round(
-            self.enu * WEIGHTS["enu"]
-            + self.cci * WEIGHTS["cci"]
-            + self.pni * WEIGHTS["pni"]
-            + self.vtr * WEIGHTS["vtr"],
+            self.cci * WEIGHTS["cci"]
+            + self.fmt * WEIGHTS["fmt"]
+            + self.enu * WEIGHTS["enu"]
+            + self.tic * WEIGHTS["tic"],
             2,
         )
 

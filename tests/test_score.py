@@ -3,16 +3,16 @@ from harness.score import compute_bootstrap_ci, primary_profile, render_html, re
 
 
 def test_classify_tier():
-    assert classify_tier(7.99) == "T1 · 人话级"
-    assert classify_tier(8.0) == "T2 · 黑话级"
-    assert classify_tier(11.99) == "T2 · 黑话级"
-    assert classify_tier(12.0) == "T3 · 天书级"
+    assert classify_tier(9.99) == "T1 · 人话级"
+    assert classify_tier(10.0) == "T2 · 黑话级"
+    assert classify_tier(13.99) == "T2 · 黑话级"
+    assert classify_tier(14.0) == "T3 · 天书级"
 
 
 def test_primary_profile_picks_top_metrics():
-    metrics = {"cvd": 12.0, "hed": 25.5, "enu": 30.1, "cci": 1.0, "pni": 0.0, "vtr": 5.0}
+    metrics = {"cci": 1.0, "fmt": 0.0, "enu": 30.1, "tic": 5.0, "cvd": 12.0, "hed": 25.5}
     profile = primary_profile(metrics)
-    assert "ENU 报菜名堆砌(30.1)" in profile
+    assert "ENU 报菜名与堆砌(30.1)" in profile
     assert "HED 防御性叠甲(25.5)" in profile
     assert "CVD" not in profile
 

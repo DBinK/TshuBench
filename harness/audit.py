@@ -265,21 +265,6 @@ def compute_audit_report(
         obs, p_val = paired_permutation_p(diffs, n_perm=n_perm, seed=100 + idx)
         vs_top_pairs.append(PairedResult(1, top_model, idx, mb, round(obs, 2), round(p_val, 4)))
 
-    # 5. PNI 剔除敏感性
-    no_pni_w = {k: v / (1.0 - WEIGHTS["pni"]) for k, v in WEIGHTS.items() if k != "pni"}
-    no_pni_scores = {
-        m: statistics.mean(
-            sum(by_model[m][t].metrics[k] * w for k, w in no_pni_w.items()) for t in task_ids
-        )
-        for m in models_sorted
-    }
-    no_pni_order = sorted(models_sorted, key=lambda m: no_pni_scores[m])
-    rank_shifts = [
-        {"model": m, "from_rank": idx + 1, "to_rank": no_pni_order.index(m) + 1}
-        for idx, m in enumerate(models_sorted)
-        if no_pni_order.index(m) != idx
-    ]
-
     return {
         "n_models": len(models_sorted),
         "n_tasks": len(task_ids),
@@ -292,7 +277,6 @@ def compute_audit_report(
         "split_half": split_half,
         "adjacent_pairs": adjacent_pairs,
         "vs_top_pairs": vs_top_pairs,
-        "pni_rank_shifts": rank_shifts,
     }
 
 
@@ -352,15 +336,6 @@ def print_audit_report(report: dict[str, object]) -> None:
             f"(+{first_sig.diff:.2f}, p={first_sig.p_value:.4f})"
             if first_sig
             else "无模型显著高于 #1"
-        )
-    )
-    shifts: list[dict[str, object]] = report["pni_rank_shifts"]  # type: ignore[assignment]
-    rprint(
-        f"[bold]5. 剔除低信度 PNI 敏感性：[/bold]"
-        + (
-            "仅交换 " + "、".join(f"#{s['from_rank']}↔#{s['to_rank']}({s['model']})" for s in shifts)
-            if shifts
-            else "全部排名完全不变"
         )
     )
 

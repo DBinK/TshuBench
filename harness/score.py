@@ -20,12 +20,12 @@ from harness.metrics import evaluate, opening_entropy
 from harness.models import WEIGHTS, ModelReport, Sample, ScoredSample, Task, classify_tier
 
 METRIC_LABELS = {
+    "cci": "CCI 长链绕口与推演",
+    "fmt": "FMT 排版强迫与支线",
+    "enu": "ENU 报菜名与堆砌",
+    "tic": "TIC 套话抽动与模板",
     "cvd": "CVD 首句决断延迟",
     "hed": "HED 防御性叠甲",
-    "enu": "ENU 报菜名堆砌",
-    "cci": "CCI 句法负荷",
-    "pni": "PNI 欧化名物化",
-    "vtr": "VTR 语言抽动",
 }
 
 DEFAULT_EFFORT_BY_MODEL = {
@@ -139,10 +139,10 @@ def score_model(
     }
     open_s = round(averages["cvd"] * WEIGHTS["cvd"] + averages["hed"] * WEIGHTS["hed"], 2)
     body_s = round(
-        averages["enu"] * WEIGHTS["enu"]
-        + averages["cci"] * WEIGHTS["cci"]
-        + averages["pni"] * WEIGHTS["pni"]
-        + averages["vtr"] * WEIGHTS["vtr"],
+        averages["cci"] * WEIGHTS["cci"]
+        + averages["fmt"] * WEIGHTS["fmt"]
+        + averages["enu"] * WEIGHTS["enu"]
+        + averages["tic"] * WEIGHTS["tic"],
         2,
     )
     ts = round(sum(averages[k] * w for k, w in WEIGHTS.items()), 2)
@@ -206,7 +206,7 @@ def render_markdown(reports: list[ModelReport]) -> str:
         "",
         f"生成时间：{datetime.now():%Y-%m-%d %H:%M}",
         "",
-        "分数越低越少见这六类文风病灶，0 分仅表示未检出预设惩罚模式（不代表事实正确或回答完整）。本榜为启发式文风观察指数，尚未经独立盲评校准阅读效度；V2.1 权重按「开口痛快度 26%（CVD 12% + HED 14%）+ 正文阅读负担 74%（ENU 22% + CCI 22% + PNI 14% + VTR 16%）」拆分，梯队按点估计（<8 / 8–12 / ≥12）划定，[下限, 上限] 为 1000 次 Bootstrap 95% 置信区间；36 题配对置换检验下相邻名次均无显著差异（p≥0.19），接近分差不应解读为稳定优劣。",
+        "分数越低越少见这六类文风病灶，0 分仅表示未检出预设惩罚模式（不代表事实正确或回答完整）。本榜为启发式文风观察指数，尚未经独立盲评校准阅读效度；V3 权重按「正文阅读负担 76%（CCI 24% + ENU 20% + FMT 16% + TIC 16%）+ 开口痛快度 24%（CVD 12% + HED 12%）」拆分，梯队按点估计（<10 / 10–14 / ≥14）划定，[下限, 上限] 为 1000 次 Bootstrap 95% 置信区间；相邻名次差异请结合配对置换检验判断。",
         "",
         header,
         sep,
@@ -286,7 +286,7 @@ footer{{color:var(--muted);margin-top:28px;font-size:12px}}
 </style>
 <main>
 <h1>TshuBench · 天书榜</h1>
-<p class=sub>中文工程回答的启发式文风观察榜（非经过盲评校准的阅读负担量表）。分数越低越少见黑话、套话与结构膨胀，0 分表示未检出预设惩罚（不代表知识正确）。基于 36 道日常工程题（V2.1 权重：开口痛快度 26% + 正文阅读负担 74%），梯队按点估计（<8 / 8–12 / ≥12）分档；36 题配对置换检验下相邻名次均无显著差异（p≥0.19），CI 重叠区间请结合病灶画像判断。</p>
+<p class=sub>中文工程回答的启发式文风观察榜（非经过盲评校准的阅读负担量表）。分数越低越少见黑话、套话与结构膨胀，0 分表示未检出预设惩罚（不代表知识正确）。基于 36 道日常工程题（V3 权重：正文阅读负担 76% + 开口痛快度 24%），梯队按点估计（<10 / 10–14 / ≥14）分档，CI 重叠区间请结合病灶画像判断。</p>
 <table>
 <thead><tr><th>#</th><th>模型</th><th>思考档位</th><th>梯队</th><th>TshuScore</th><th>开口扣分</th><th>正文扣分</th><th>主导病灶画像</th>{head}</tr></thead>
 <tbody>{''.join(rows)}</tbody>

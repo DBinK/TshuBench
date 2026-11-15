@@ -5,9 +5,9 @@ from harness.metrics import (
     score_cci,
     score_cvd,
     score_enu,
+    score_fmt,
     score_hed,
-    score_pni,
-    score_vtr,
+    score_tic,
 )
 from harness.models import Sample, Task
 from harness.text import is_truncated
@@ -97,44 +97,23 @@ def test_cci_long_clause_and_nesting():
     assert light == 0.0
 
 
-def test_pni_nominalization_and_passive():
-    heavy, _ = score_pni(
-        "我们对系统进行了全面的优化工作，对数据进行了系统的分析工作，"
-        "对流程进行了细致的调整工作，并且受到了广泛的好评，因此我们认为它是有效的。"
-    )
-    light, _ = score_pni("改这三行，然后重启。")
-    assert heavy > 40.0
-    assert light == 0.0
-
-
-def test_vtr_markdown_and_jargon_in_chat():
-    task = make_task()
-    heavy, _ = score_vtr(
-        task,
-        "### 一、背景\n\n**赋能**全链路，**抓手**闭环。\n\n- 底层逻辑\n- 颗粒度\n\n毋庸置疑，这就是生态位。",
-    )
-    light, _ = score_vtr(task, "改这一行，然后重启。")
-    assert heavy > 50.0
-    assert light == 0.0
-
-
-def test_vtr_em_dash_and_support_closing():
+def test_tic_jargon_em_dash_and_support_closing():
     task = make_task(register="doc")
-    sloppy, _ = score_vtr(
+    sloppy, _ = score_tic(
         task,
-        "这个问题核心在于锁竞争——也就是线程阻塞——我们需要先排查——然后再优化。如果需要继续处理，随时说一声，要不要我帮你改？",
+        "### 一、背景\n\n**赋能**全链路，**抓手**闭环——也就是底层逻辑——我们需要先排查——然后再优化。如果需要继续处理，随时说一声，要不要我帮你改？",
     )
-    clean, _ = score_vtr(task, "核心原因是锁竞争。直接把锁粒度拆小。")
-    assert sloppy > 35.0
+    clean, _ = score_tic(task, "核心原因是锁竞争。直接把锁粒度拆小。")
+    assert sloppy > 40.0
     assert clean == 0.0
 
 
-def test_vtr_table_wall_penalized_and_bold_bullet_exempt():
+def test_fmt_table_wall_penalized_and_bold_bullet_exempt():
     task = make_task(register="chat")
     table_reply = "| 原因 | 建议 |\n|---|---|\n| 内存泄漏 | 排查对象 |\n| 堆太小 | 调大 Xmx |"
     bold_bullet_reply = "**直接改这里**：\n- 把 CACHE 换成 TTLCache\n- 重启观察内存"
-    table_score, _ = score_vtr(task, table_reply)
-    clean_score, _ = score_vtr(task, bold_bullet_reply)
+    table_score, _ = score_fmt(task, table_reply)
+    clean_score, _ = score_fmt(task, bold_bullet_reply)
     assert table_score > 30.0
     assert clean_score == 0.0
 
@@ -215,30 +194,13 @@ def test_cvd_synonym_and_quoted_anchor_not_max_penalized():
     assert score_cvd(quoted_task, "不是索引“失效”了，是索引建错了。")[0] == 0.0
 
 
-def test_pni_ignores_non_passive_bei():
-    non_passive, _ = score_pni("目前策略虽然偏被动，但被子与植被类普通词条不会破坏句子流畅度。")
-    real_passive, _ = score_pni("该配置在启动时已经被覆盖，相关连接也已经受到严格限制并且被反复检查。" * 2)
-    assert non_passive == 0.0
-    assert real_passive > 15.0
-
-
-def test_parenthetical_explanation_not_penalized_in_cci_or_pni():
+def test_parenthetical_explanation_not_penalized_in_cci():
     sample = (
         "**ijson**\n\n"
         "**原因**：Python 原生 json.load 解析后生成的对象常有 3~5 倍以上的内存膨胀"
         "（200MB 文件可能需要 600MB~1GB 内存），在 512MB 的容器中会直接触发 OOM。"
     )
     assert score_cci(sample)[0] == 0.0
-    assert score_pni(sample)[0] == 0.0
-
-
-def test_bare_code_reference_versus_inline_restatement():
-    bare_ref, _ = score_pni(
-        "请按 R1 和 R3 评估，若触发 C2 或违反决策 4（见 flash.rs:283 与 base.rs:706），直接按第 6 条回退。"
-    )
-    restated, _ = score_pni("该命令符合 R3（不连设备、单动作的顶层动词）的设计约定。")
-    assert bare_ref > 30.0
-    assert restated == 0.0
 
 
 def test_cot_deliberation_and_semicolon_chain_in_cci():
@@ -248,9 +210,9 @@ def test_cot_deliberation_and_semicolon_chain_in_cci():
     assert score > 35.0
 
 
-def test_vtr_exempts_quoted_prompt_jargon():
+def test_tic_exempts_quoted_prompt_jargon():
     task = make_task(prompt="发布说明写「全面升级系统架构，赋能业务增长」行不行？")
-    score, _ = score_vtr(task, "千万别这么写。用户看不懂赋能业务增长这种空话。")
+    score, _ = score_tic(task, "千万别这么写。用户看不懂赋能业务增长这种空话。")
     assert score == 0.0
 
 
@@ -264,7 +226,7 @@ def test_cvd_allows_first_paragraph_diagnosis_without_cliff():
     assert score_cvd(task, ans)[0] == 0.0
 
 
-def test_vtr_penalizes_sprawl_sections_and_excess_code_blocks():
+def test_fmt_penalizes_sprawl_sections_and_excess_code_blocks():
     task = make_task()
     concise = "直接设置 `-e TZ=Asia/Shanghai` 即可生效。\n\n```bash\ndocker run -e TZ=Asia/Shanghai app\n```"
     sprawl = (
@@ -275,7 +237,7 @@ def test_vtr_penalizes_sprawl_sections_and_excess_code_blocks():
         "## 常见坑与不推荐的做法\n这里补充说明各种例外情况和注意事项。\n"
         "```go\nimport _ \"time/tzdata\"\n```\n"
     )
-    assert score_vtr(task, sprawl)[0] > score_vtr(task, concise)[0] + 5.0
+    assert score_fmt(task, sprawl)[0] > score_fmt(task, concise)[0] + 5.0
 
 
 def test_cvd_rejects_empty_meta_label_without_verdict():
@@ -296,12 +258,12 @@ def test_cci_does_not_overpenalize_plain_connective_yiweizhe():
     assert score_cci(a)[0] == score_cci(b)[0] == 0.0
 
 
-def test_vtr_sprawl_only_penalizes_section_headers():
+def test_fmt_sprawl_only_penalizes_section_headers():
     task = make_task(register="chat")
     inline_note = "不建议直接删除日志。**注意事项：**文件仍被进程打开时，删除后空间不会立即释放。"
     section_sprawl = "不建议直接删除日志。\n\n## 注意事项\n文件仍被进程打开时，删除后空间不会立即释放。\n\n## 常见坑\n部分服务目录被删后无法自动重建。"
-    assert score_vtr(task, inline_note)[0] == 0.0
-    assert score_vtr(task, section_sprawl)[0] > 30.0
+    assert score_fmt(task, inline_note)[0] == 0.0
+    assert score_fmt(task, section_sprawl)[0] > 30.0
 
 
 def test_cvd_version_labels_only_exempt_in_doc_register():
