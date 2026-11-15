@@ -1,6 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "tshubench"
-version = "0.1.0"
+name = "tshu"
+version = "0.2.0"
 description = "TshuBench · 天书榜：量化后训练过对齐导致的中文可读性退化"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,12 +18,15 @@ dependencies = [
     "typer>=0.29.1",
 ]
 
+[project.scripts]
+tshu = "tshu.cli:app"
+
 [dependency-groups]
 dev = ["pytest>=8.0"]
 
-[tool.uv]
-package = false
+[tool.hatch.build.targets.wheel]
+packages = ["src/tshu"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]

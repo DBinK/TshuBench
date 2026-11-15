@@ -10,9 +10,9 @@ from pathlib import Path
 
 import typer
 
-from harness.audit import compute_audit_report, print_audit_report
-from harness.run import execute_models, run_demo
-from harness.score import load_tasks, run_scoring
+from tshu.audit import compute_audit_report, print_audit_report
+from tshu.run import execute_models, run_demo
+from tshu.score import load_tasks, run_scoring
 
 app = typer.Typer(help="TshuBench · 天书榜评测与打分命令行工具", no_args_is_help=True)
 

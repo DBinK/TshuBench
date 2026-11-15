@@ -14,10 +14,10 @@ from pathlib import Path
 from rich import print as rprint
 from rich.table import Table
 
-from harness.metrics import evaluate, opening_entropy
-from harness.models import WEIGHTS, ScoredSample, Task
-from harness.score import load_samples, load_tasks
-from harness.text import char_len, han_len, split_sentences
+from tshu.metrics import evaluate, opening_entropy
+from tshu.models import WEIGHTS, ScoredSample, Task
+from tshu.score import load_samples, load_tasks
+from tshu.text import char_len, han_len, split_sentences
 
 METRIC_KEYS = tuple(WEIGHTS.keys())
 

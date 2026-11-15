@@ -1,0 +1,80 @@
+name: Verify Community Run PR
+
+on:
+  pull_request:
+    paths:
+      - "runs/community/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run Unit Tests
+        run: uv run pytest
+
+      - name: Validate Changed Community Runs
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # 1. Ensure no files outside runs/community/ were modified
+          OUTSIDE=$(echo "$CHANGED" | grep -v '^runs/community/' || true)
+          if [ -n "$OUTSIDE" ]; then
+            echo "::error::PR 只允许修改 runs/community/ 目录下的文件，检测到越权改动：$OUTSIDE"
+            exit 1
+          fi
+
+          # 2. Validate each changed jsonl file has all 36 tasks and passes tshu score
+          mkdir -p /tmp/pr_check
+          echo "### 🤖 TshuBench 自动化校验报告" > /tmp/pr_check/comment.md
+          echo "" >> /tmp/pr_check/comment.md
+
+          for f in $CHANGED; do
+            if [[ "$f" == *.jsonl ]]; then
+              uv run python -c "
+import sys
+from pathlib import Path
+from tshu.score import load_tasks, load_samples_grouped
+tasks = load_tasks('tasks/eval_suite_v2.jsonl')
+grouped = load_samples_grouped(['$f'])
+assert grouped, '$f 没有有效样本'
+for (model, effort), samples in grouped.items():
+    ids = {s.task_id for s in samples if s.task_id in tasks}
+    missing = set(tasks) - ids
+    assert not missing, f'{model} ({effort}) 缺少题目: {sorted(missing)}'
+    print(f'OK: {model} ({effort}) -> {len(ids)}/36 题完整')
+"
+              uv run tshu score "$f" --out /tmp/pr_check/out --html /tmp/pr_check/index.html
+              cat /tmp/pr_check/out/report.md >> /tmp/pr_check/comment.md
+            fi
+          done
+
+      - name: Post Report Comment on PR
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/pr_check/comment.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              body: body
+            });

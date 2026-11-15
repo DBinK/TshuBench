@@ -1,8 +1,8 @@
 """思考内容隔离测试：思考文字绝不能进入被测正文。"""
 
-from harness.run import strip_think
-from harness.models import Sample, Task
-from harness.metrics import evaluate
+from tshu.run import strip_think
+from tshu.models import Sample, Task
+from tshu.metrics import evaluate
 
 
 def test_thinking_blocks_are_stripped():

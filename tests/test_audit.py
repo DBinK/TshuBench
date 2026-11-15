@@ -1,8 +1,8 @@
-"""统计体检模块（harness.audit）单元测试。"""
+"""统计体检模块（tshu.audit）单元测试。"""
 
 from pathlib import Path
 
-from harness.audit import compute_audit_report, holm_adjust, jacobi_pca, paired_permutation_p, pearson_r
+from tshu.audit import compute_audit_report, holm_adjust, jacobi_pca, paired_permutation_p, pearson_r
 
 
 def test_pearson_r_basic() -> None:

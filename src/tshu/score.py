@@ -7,6 +7,7 @@
 
 import argparse
 import html
+import importlib.resources
 import json
 import random
 from datetime import datetime
@@ -16,8 +17,8 @@ from statistics import mean
 from loguru import logger
 from rich import print as rprint
 
-from harness.metrics import evaluate, opening_entropy
-from harness.models import WEIGHTS, ModelReport, Sample, ScoredSample, Task, classify_tier
+from tshu.metrics import evaluate, opening_entropy
+from tshu.models import WEIGHTS, ModelReport, Sample, ScoredSample, Task, classify_tier
 
 METRIC_LABELS = {
     "cci": "CCI 长链绕口与推演",
@@ -41,9 +42,13 @@ DEFAULT_EFFORT_BY_MODEL = {
 
 
 def load_tasks(path: str | Path) -> dict[str, Task]:
-    path = Path(path)
+    p = Path(path)
+    if p.exists():
+        content = p.read_text(encoding="utf-8")
+    else:
+        content = importlib.resources.files("tshu.data").joinpath("eval_suite_v2.jsonl").read_text(encoding="utf-8")
     tasks: dict[str, Task] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in content.splitlines():
         if not line.strip():
             continue
         task = Task.model_validate_json(line)
@@ -63,6 +68,37 @@ def load_samples(paths: list[str | Path]) -> dict[str, list[Sample]]:
             sample = Sample.model_validate_json(line)
             grouped.setdefault(sample.model, []).append(sample)
     return grouped
+
+
+def load_samples_grouped(paths: list[str | Path]) -> dict[tuple[str, str], list[Sample]]:
+    """按 (model, reasoning_effort) 分组加载样本，支持同模型多思考档位独立打分。"""
+    grouped: dict[tuple[str, str], list[Sample]] = {}
+    for path in map(Path, paths):
+        if not path.exists():
+            logger.warning(f"跳过不存在的文件：{path}")
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            sample = Sample.model_validate_json(line)
+            effort = sample.reasoning_effort or DEFAULT_EFFORT_BY_MODEL.get(sample.model, "默认")
+            grouped.setdefault((sample.model, effort), []).append(sample)
+    return grouped
+
+
+def group_best_effort_reports(reports: list[ModelReport]) -> tuple[list[ModelReport], dict[str, list[ModelReport]]]:
+    """同模型多思考档位归并：主榜取天书指数最低的档位，并返回各模型全部档位列表。"""
+    by_model: dict[str, list[ModelReport]] = {}
+    for r in reports:
+        by_model.setdefault(r.model, []).append(r)
+
+    primary_reports: list[ModelReport] = []
+    variants_by_model: dict[str, list[ModelReport]] = {}
+    for model, group in by_model.items():
+        sorted_group = sorted(group, key=lambda r: r.tshu_score)
+        primary_reports.append(sorted_group[0])
+        variants_by_model[model] = sorted_group
+    return primary_reports, variants_by_model
 
 
 def compute_bootstrap_ci(
@@ -274,7 +310,10 @@ def parse_model_display(model: str) -> tuple[str, str]:
     return (name, parts[0] if len(parts) > 1 else "Other")
 
 
-def render_html(reports: list[ModelReport]) -> str:
+def render_html(
+    reports: list[ModelReport],
+    variants_by_model: dict[str, list[ModelReport]] | None = None,
+) -> str:
     ranked = sorted(reports, key=lambda r: r.tshu_score)
     model_entries = []
     static_rows = []
@@ -295,6 +334,18 @@ def render_html(reports: list[ModelReport]) -> str:
                     "response": item.sample.response[:240] + ("..." if len(item.sample.response) > 240 else ""),
                 })
 
+        variants_data = []
+        if variants_by_model and report.model in variants_by_model:
+            for v in variants_by_model[report.model]:
+                v_tier = v.tier or classify_tier(v.tshu_score)
+                variants_data.append({
+                    "effort": v.reasoning_effort or "默认",
+                    "tshu_score": round(v.tshu_score, 2),
+                    "ci_lower": round(v.ci_lower, 2),
+                    "ci_upper": round(v.ci_upper, 2),
+                    "tier": v_tier,
+                })
+
         entry = {
             "rank": i,
             "model": report.model,
@@ -309,6 +360,7 @@ def render_html(reports: list[ModelReport]) -> str:
             "route_note": route_note_text,
             "metrics": {k: round(report.metrics[k], 1) for k in METRIC_LABELS},
             "worst": worst_items,
+            "effort_variants": variants_data,
         }
         model_entries.append(entry)
 
@@ -711,6 +763,30 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
           `;
         }}
 
+        let variantsHtml = '';
+        if (item.effort_variants && item.effort_variants.length > 1) {{
+          let vCards = '';
+          item.effort_variants.forEach((v, idx) => {{
+            const isBest = idx === 0;
+            const badge = isBest ? '<span class="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 ml-2">主榜代表</span>' : '';
+            vCards += `
+              <div class="bg-zinc-950 border ${{isBest ? 'border-emerald-500/40' : 'border-zinc-800'}} p-3">
+                <div class="flex items-center justify-between text-xs font-mono text-zinc-300">
+                  <span>档位：${{v.effort}}</span>${{badge}}
+                </div>
+                <div class="font-mono text-lg font-bold text-zinc-50 mt-1">${{v.tshu_score.toFixed(2)}} <span class="text-xs font-normal text-zinc-400">[${{v.ci_lower.toFixed(1)}}, ${{v.ci_upper.toFixed(1)}}]</span></div>
+                <div class="text-xs text-zinc-400 mt-0.5">${{v.tier}}</div>
+              </div>
+            `;
+          }});
+          variantsHtml = `
+            <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
+              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 多思考档位对比（主榜取天书指数最低档）</div>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${{vCards}}</div>
+            </div>
+          `;
+        }}
+
         let badcasesHtml = '';
         if (item.worst && item.worst.length > 0) {{
           badcasesHtml = `
@@ -736,6 +812,7 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
                 <div class="text-xs font-mono text-zinc-400 mt-1 sm:mt-0">天书指数：<span class="text-emerald-400 font-bold text-sm">${{item.tshu_score.toFixed(2)}}</span> · 95% 置信区间 [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</div>
               </div>
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">${{cardsHtml}}</div>
+              ${{variantsHtml}}
               ${{badcasesHtml}}
             </div>
           </td>
@@ -814,10 +891,12 @@ def run_scoring(
 ) -> list[ModelReport]:
     """执行批量打分并生成 JSON、Markdown 战报与 HTML 榜单。"""
     tasks = load_tasks(tasks_path)
-    grouped = load_samples(runs)
-    reports = [score_model(model, samples, tasks) for model, samples in grouped.items()]
-    if not reports:
+    grouped = load_samples_grouped(runs)
+    all_reports = [score_model(model, samples, tasks) for (model, _effort), samples in grouped.items()]
+    if not all_reports:
         raise SystemExit("没有可打分的样本")
+
+    reports, variants_by_model = group_best_effort_reports(all_reports)
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -853,7 +932,7 @@ def run_scoring(
 
     html_out = Path(html_path)
     html_out.parent.mkdir(parents=True, exist_ok=True)
-    html_out.write_text(render_html(reports), encoding="utf-8")
+    html_out.write_text(render_html(reports, variants_by_model=variants_by_model), encoding="utf-8")
 
     for report in sorted(reports, key=lambda r: r.tshu_score):
         rprint(

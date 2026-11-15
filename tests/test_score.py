@@ -1,5 +1,5 @@
-from harness.models import Sample, Task, classify_tier
-from harness.score import compute_bootstrap_ci, primary_profile, render_html, render_markdown, score_model
+from tshu.models import Sample, Task, classify_tier
+from tshu.score import compute_bootstrap_ci, primary_profile, render_html, render_markdown, score_model
 
 
 def test_classify_tier():

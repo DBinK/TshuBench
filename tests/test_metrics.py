@@ -1,6 +1,6 @@
 """M1-M6 正反例单测：干练人类回答应接近 0 分，典型过对齐回答应显著更高。"""
 
-from harness.metrics import (
+from tshu.metrics import (
     evaluate,
     score_cci,
     score_cvd,
@@ -9,8 +9,8 @@ from harness.metrics import (
     score_hed,
     score_tic,
 )
-from harness.models import Sample, Task
-from harness.text import is_truncated
+from tshu.models import Sample, Task
+from tshu.text import is_truncated
 
 
 def make_task(**overrides) -> Task:

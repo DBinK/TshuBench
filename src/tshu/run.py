@@ -21,9 +21,9 @@ from pathlib import Path
 import httpx
 from loguru import logger
 
-from harness.models import Sample, Task
-from harness.score import load_tasks
-from harness.text import is_truncated
+from tshu.models import Sample, Task
+from tshu.score import load_tasks
+from tshu.text import is_truncated
 
 THINK_BLOCK = re.compile(r"<(think|thinking|reasoning|analysis|thought)>.*?</\1>", re.S | re.I)
 

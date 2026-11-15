@@ -16,8 +16,8 @@ import math
 import re
 from statistics import mean, pstdev
 
-from harness.models import MetricScores, Sample, ScoredSample, Task
-from harness.text import (
+from tshu.models import MetricScores, Sample, ScoredSample, Task
+from tshu.text import (
     FENCED_CODE,
     analyze_markdown,
     char_len,
