@@ -404,14 +404,14 @@ def render_html(
         ("hed", "HED", "防御叠甲", ""),
     ]
     head_cells = "".join(
-        f"<th data-sort='{k}' title='{code}' class='py-3.5 px-2 text-center cursor-pointer hover:text-white transition-colors group {border_cls}'>"
-        f"<div class='inline-flex flex-col items-center'>"
-        f"<div class='flex items-center gap-1'>"
+        f"<th scope='col' data-sort='{k}' title='{code}' class='p-0 text-center border-zinc-800 {border_cls}'>"
+        f"<button type='button' class='sort-btn w-full h-full py-3.5 px-2 inline-flex flex-col items-center justify-center cursor-pointer hover:text-white transition-colors group'>"
+        f"<span class='flex items-center gap-1'>"
         f"<span class='font-semibold text-sm text-zinc-200 group-hover:text-white whitespace-nowrap'>{desc}</span>"
-        f"<span class='sort-ind text-zinc-400 text-xs'></span>"
-        f"</div>"
+        f"<span class='sort-ind text-zinc-400 text-xs' aria-hidden='true'></span>"
+        f"</span>"
         f"<span class='text-[11px] text-zinc-400 font-mono font-normal mt-0.5'>{code}</span>"
-        f"</div></th>"
+        f"</button></th>"
         for k, code, desc, border_cls in metric_header_defs
     )
 
@@ -420,10 +420,11 @@ def render_html(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>TshuBench · 天书榜 | 中文大模型表达负担与结构膨胀评测</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {{
@@ -448,7 +449,16 @@ tailwind.config = {{
 }}
 </script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+:root {{
+  color-scheme: dark;
+  --target-size: 24px;
+}}
+
+@media (pointer: coarse) {{
+  :root {{
+    --target-size: 44px;
+  }}
+}}
 
 * {{
   border-radius: 0 !important;
@@ -460,7 +470,42 @@ body {{
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-size: 15px;
+  font-size: 0.9375rem;
+  overflow-wrap: break-word;
+}}
+
+h1, h2, h3 {{
+  text-wrap: balance;
+}}
+
+p {{
+  text-wrap: pretty;
+}}
+
+:where(a, code) {{
+  overflow-wrap: anywhere;
+}}
+
+:where(button, select, input[type="text"], [tabindex="0"]):focus-visible,
+a:focus-visible {{
+  outline: 2px solid #34d399;
+  outline-offset: 2px;
+}}
+
+.touch-target {{
+  min-block-size: var(--target-size);
+}}
+
+.visually-hidden {{
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
 }}
 
 code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell {{
@@ -524,121 +569,154 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
 
     <!-- Analytical Terminal Spec Strip -->
     <div class="grid grid-cols-2 md:grid-cols-4 border border-zinc-800 bg-zinc-950 divide-x divide-y md:divide-y-0 divide-zinc-800">
-      <div class="p-3.5 sm:p-4">
+      <div class="p-3 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">最近更新</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{now_str}</div>
+        <div class="text-zinc-100 font-bold text-sm sm:text-base md:text-lg font-mono mt-1">{now_str}</div>
       </div>
-      <div class="p-3.5 sm:p-4">
+      <div class="p-3 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">参评模型</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">{len(ranked)} 款主流模型</div>
+        <div class="text-zinc-100 font-bold text-sm sm:text-base md:text-lg font-mono mt-1">{len(ranked)} 款主流模型</div>
       </div>
-      <div class="p-3.5 sm:p-4">
+      <div class="p-3 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">评测样本</div>
-        <div class="text-zinc-100 font-bold text-base sm:text-lg font-mono mt-1">36 个场景 · 612 次评测</div>
+        <div class="text-zinc-100 font-bold text-sm sm:text-base md:text-lg font-mono mt-1">36 个场景 · 612 次评测</div>
       </div>
-      <div class="p-3.5 sm:p-4">
+      <div class="p-3 sm:p-4">
         <div class="text-zinc-400 text-xs font-sans tracking-wider">打分引擎</div>
-        <div class="text-emerald-400 font-bold text-base sm:text-lg font-mono mt-1">AST 确定性规则（无 LLM 裁判）</div>
+        <div class="text-emerald-400 font-bold text-sm sm:text-base md:text-lg font-mono mt-1">AST 确定性规则（无 LLM 裁判）</div>
       </div>
     </div>
 
-    <!-- Notice Strip (Font-sans, clear readable text, no SimSun fallback!) -->
-    <div class="border-x border-b border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 font-sans leading-relaxed">
-      <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜为工程趣味性观测基准，不构成严谨学术结论，具体表现请以实际业务体验为准。采用反向扣分制（分数越低表达越简洁，点击模型行可展开详情）。欢迎提交 PR 贡献新指标与评测算法，下一代榜单正在规划开发中。
+    <!-- Notice Strip -->
+    <div class="border-x border-b border-zinc-800 bg-zinc-900/40 p-3.5 sm:p-4 text-sm text-zinc-300 font-sans leading-relaxed">
+      <span class="text-emerald-400 font-bold font-mono mr-1.5">[说明]</span> 本榜为工程趣味性观测基准，不构成严谨学术结论，具体表现请以实际业务体验为准。采用反向扣分制（分数越低表达越简洁，点击模型可展开详情）。欢迎提交 PR 贡献新指标与评测算法，下一代榜单正在规划开发中。
     </div>
   </header>
 
-  <!-- Leaderboard Container -->
-  <div class="border border-zinc-800 bg-zinc-950 overflow-hidden">
-    <!-- Controls / Filters Docked Directly Atop Table -->
-    <div class="border-b border-zinc-800 flex flex-col xl:flex-row items-stretch justify-between text-sm font-mono">
-      <div class="flex-1 min-w-[280px]">
-        <input type="text" id="search-input" placeholder="🔍 搜索模型名称、厂商、底层代号..." class="w-full bg-zinc-950 text-zinc-100 placeholder-zinc-500 px-4 py-3.5 text-sm font-sans border-b xl:border-b-0 xl:border-r border-zinc-800 focus:outline-none focus:bg-zinc-900 transition-colors" />
-      </div>
+  <main id="main-content">
+    <div id="status-announcer" role="status" aria-live="polite" class="visually-hidden"></div>
 
-      <div class="flex flex-wrap items-center">
-        <!-- Tier Filter -->
-        <div class="flex items-center border-b xl:border-b-0 xl:border-r border-zinc-800 divide-x divide-zinc-800" id="tier-group">
-          <button class="filter-btn active px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="all">全部梯队</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="人话级">🟢 人话级</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="黑话级">🟡 黑话级</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-tier="天书级">🔴 天书级</button>
+    <!-- Leaderboard Container -->
+    <div class="border border-zinc-800 bg-zinc-950">
+      <!-- Controls / Filters Docked Directly Atop Table -->
+      <div class="border-b border-zinc-800 flex flex-col xl:flex-row items-stretch justify-between text-sm font-mono">
+        <div class="flex-1 min-w-0">
+          <input type="text" id="search-input" aria-label="搜索模型名称、厂商或底层代号" placeholder="🔍 搜索模型名称、厂商、底层代号..." class="touch-target w-full bg-zinc-950 text-zinc-100 placeholder-zinc-500 px-4 py-3 text-sm font-sans border-b xl:border-b-0 xl:border-r border-zinc-800 focus:bg-zinc-900 transition-colors" />
         </div>
 
-        <!-- Provider Filter: Merged Meta and Domestic into 'Other' (其它) -->
-        <div class="flex items-center divide-x divide-zinc-800" id="provider-group">
-          <button class="filter-btn active px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-provider="all">全部厂商</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-provider="Google">Google</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-provider="Anthropic">Anthropic</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-provider="OpenAI">OpenAI</button>
-          <button class="filter-btn px-4 py-3.5 text-zinc-400 hover:text-white transition-colors" data-provider="Other">其它</button>
+        <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center">
+          <!-- Tier Filter -->
+          <div class="flex flex-wrap items-center border-b sm:border-b-0 sm:border-r border-zinc-800 divide-x divide-zinc-800" id="tier-group" role="group" aria-label="按梯队筛选">
+            <button type="button" aria-pressed="true" class="filter-btn touch-target active px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-tier="all">全部梯队</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-tier="人话级">🟢 人话级</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-tier="黑话级">🟡 黑话级</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-tier="天书级">🔴 天书级</button>
+          </div>
+
+          <!-- Provider Filter -->
+          <div class="flex flex-wrap items-center divide-x divide-zinc-800" id="provider-group" role="group" aria-label="按厂商筛选">
+            <button type="button" aria-pressed="true" class="filter-btn touch-target active px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-provider="all">全部厂商</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-provider="Google">Google</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-provider="Anthropic">Anthropic</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-provider="OpenAI">OpenAI</button>
+            <button type="button" aria-pressed="false" class="filter-btn touch-target px-3 sm:px-4 py-2.5 sm:py-3.5 text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors" data-provider="Other">其它</button>
+          </div>
         </div>
+      </div>
+
+      <!-- Mobile Sort Bar (< md) -->
+      <div class="md:hidden border-b border-zinc-800 px-3 py-2.5 flex items-center justify-between gap-2 bg-zinc-900/50 text-xs font-mono">
+        <label for="mobile-sort-select" class="text-zinc-400 shrink-0">排序：</label>
+        <select id="mobile-sort-select" class="touch-target flex-1 min-w-0 bg-zinc-950 border border-zinc-700 text-zinc-100 px-2.5 py-1.5 text-xs font-mono">
+          <option value="tshu_score">天书指数 (综合)</option>
+          <option value="cci">CCI 长链推演</option>
+          <option value="fmt">FMT 排版膨胀</option>
+          <option value="enu">ENU 报菜名</option>
+          <option value="tic">TIC 套话模板</option>
+          <option value="cvd">CVD 决断推延</option>
+          <option value="hed">HED 防御叠甲</option>
+          <option value="name">模型名称</option>
+        </select>
+        <button id="mobile-sort-dir" type="button" class="touch-target shrink-0 px-3 py-1.5 border border-zinc-700 bg-zinc-950 text-zinc-200 hover:text-white">▲ 升序</button>
+      </div>
+
+      <!-- Mobile Card List (< md) -->
+      <div id="mobile-leaderboard" class="md:hidden divide-y divide-zinc-800"></div>
+
+      <!-- Desktop Leaderboard Table (>= md) -->
+      <div id="leaderboard-scroll" tabindex="0" role="region" aria-labelledby="leaderboard-caption" class="hidden md:block overflow-x-auto">
+        <table class="w-full min-w-[1040px] text-left border-collapse" id="leaderboard-table" style="table-layout: fixed;">
+          <caption id="leaderboard-caption" class="visually-hidden">TshuBench 天书榜大模型评测排行榜</caption>
+          <colgroup>
+            <col style="width: 54px;">   <!-- 1: # -->
+            <col>                        <!-- 2: 模型与厂商 (自动吸收全部剩余宽度) -->
+            <col style="width: 90px;">   <!-- 3: 思考档位 -->
+            <col style="width: 100px;">  <!-- 4: 梯队 -->
+            <col style="width: 108px;">  <!-- 5: 综合得分 / 天书指数 -->
+            <col style="width: 80px;">   <!-- 6: 长链推演 -->
+            <col style="width: 80px;">   <!-- 7: 排版膨胀 -->
+            <col style="width: 80px;">   <!-- 8: 报菜名 -->
+            <col style="width: 80px;">   <!-- 9: 套话模板 -->
+            <col style="width: 80px;">   <!-- 10: 决断推延 -->
+            <col style="width: 80px;">   <!-- 11: 防御叠甲 -->
+          </colgroup>
+          <thead>
+            <tr class="border-b border-zinc-800 bg-zinc-900/90 text-sm text-zinc-300">
+              <th scope="col" data-sort="rank" class="p-0 text-center text-zinc-400 font-mono">
+                <button type="button" class="sort-btn w-full h-full py-3.5 px-3 inline-flex items-center justify-center gap-1 cursor-pointer hover:text-white">
+                  <span class="font-semibold text-sm">#</span>
+                  <span class="sort-ind text-zinc-400 text-xs" aria-hidden="true"></span>
+                </button>
+              </th>
+              <th scope="col" data-sort="name" class="p-0 text-left text-zinc-200 font-semibold">
+                <button type="button" class="sort-btn w-full h-full py-3.5 px-4 flex items-center gap-1 cursor-pointer hover:text-white text-left">
+                  <span class="font-semibold text-sm">模型与厂商</span>
+                  <span class="sort-ind text-zinc-400 text-xs" aria-hidden="true"></span>
+                </button>
+              </th>
+              <th scope="col" data-sort="effort" class="p-0 text-center text-zinc-300 font-medium">
+                <button type="button" class="sort-btn w-full h-full py-3.5 px-3 inline-flex items-center justify-center gap-1 cursor-pointer hover:text-white">
+                  <span class="font-semibold text-sm">思考档位</span>
+                  <span class="sort-ind text-zinc-400 text-xs" aria-hidden="true"></span>
+                </button>
+              </th>
+              <th scope="col" data-sort="tier" class="p-0 text-center text-zinc-300 font-medium">
+                <button type="button" class="sort-btn w-full h-full py-3.5 px-3 inline-flex items-center justify-center gap-1 cursor-pointer hover:text-white">
+                  <span class="font-semibold text-sm">梯队</span>
+                  <span class="sort-ind text-zinc-400 text-xs" aria-hidden="true"></span>
+                </button>
+              </th>
+              <th scope="col" data-sort="tshu_score" aria-sort="ascending" class="p-0 text-center sort-active group border-l border-zinc-800">
+                <button type="button" class="sort-btn w-full h-full py-3.5 px-3 inline-flex flex-col items-center justify-center cursor-pointer hover:text-white">
+                  <span class="flex items-center gap-1">
+                    <span class="font-bold text-sm text-zinc-100 group-hover:text-white">天书指数</span>
+                    <span class="sort-ind text-zinc-400 text-xs" aria-hidden="true">▲</span>
+                  </span>
+                  <span class="text-[11px] text-emerald-400 font-mono font-normal mt-0.5">越低越好</span>
+                </button>
+              </th>
+              {head_cells}
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body" class="divide-y divide-zinc-800/80">
+            {''.join(static_rows)}
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <!-- Leaderboard Table with Strict Colgroup and Table-Layout Fixed -->
-    <div class="overflow-x-auto">
-      <table class="w-full text-left border-collapse" id="leaderboard-table" style="table-layout: fixed;">
-        <colgroup>
-          <col style="width: 54px;">   <!-- 1: # -->
-          <col>                        <!-- 2: 模型与厂商 (自动吸收全部剩余宽度) -->
-          <col style="width: 90px;">   <!-- 3: 思考档位 -->
-          <col style="width: 100px;">  <!-- 4: 梯队 -->
-          <col style="width: 108px;">  <!-- 5: 综合得分 / 天书指数: 严格固定 108px，绝不被拉宽 -->
-          <col style="width: 80px;">   <!-- 6: 长链推演 -->
-          <col style="width: 80px;">   <!-- 7: 排版膨胀 -->
-          <col style="width: 80px;">   <!-- 8: 报菜名 -->
-          <col style="width: 80px;">   <!-- 9: 套话模板 -->
-          <col style="width: 80px;">   <!-- 10: 决断推延 -->
-          <col style="width: 80px;">   <!-- 11: 防御叠甲 -->
-        </colgroup>
-        <thead>
-          <tr class="border-b border-zinc-800 bg-zinc-900/90 text-sm text-zinc-300">
-            <th data-sort="rank" class="py-3.5 px-3 text-center text-zinc-400 font-mono cursor-pointer hover:text-white">
-              <span class="font-semibold text-sm">#</span>
-            </th>
-            <th data-sort="name" class="py-3.5 px-4 text-zinc-200 font-semibold cursor-pointer hover:text-white">
-              <div class="flex items-center gap-1">
-                <span class="font-semibold text-sm">模型与厂商</span>
-                <span class="sort-ind text-zinc-400 text-xs"></span>
-              </div>
-            </th>
-            <th data-sort="effort" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white">
-              <span class="font-semibold text-sm">思考档位</span>
-            </th>
-            <th data-sort="tier" class="py-3.5 px-3 text-center text-zinc-300 font-medium cursor-pointer hover:text-white">
-              <span class="font-semibold text-sm">梯队</span>
-            </th>
-            <th data-sort="tshu_score" class="py-3.5 px-3 text-center cursor-pointer hover:text-white sort-active group border-l border-zinc-800">
-              <div class="inline-flex flex-col items-center">
-                <div class="flex items-center gap-1">
-                  <span class="font-bold text-sm text-zinc-100 group-hover:text-white">天书指数</span>
-                  <span class="sort-ind text-zinc-400 text-xs">▲</span>
-                </div>
-                <span class="text-[11px] text-emerald-400 font-mono font-normal mt-0.5">越低越好</span>
-              </div>
-            </th>
-            {head_cells}
-          </tr>
-        </thead>
-        <tbody id="leaderboard-body" class="divide-y divide-zinc-800/80">
-          {''.join(static_rows)}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Contribute via AI Agent -->
-  <div class="mt-6 border border-zinc-800 bg-zinc-950 p-4">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-      <div class="font-mono text-xs text-zinc-200 font-bold">// 贡献评测结果：复制以下 Prompt 发给你的 AI 编程助手（Claude Code / Cursor / Antigravity 等）</div>
-      <button id="copy-agent-prompt" type="button" class="self-start sm:self-auto px-2.5 py-1 text-xs font-mono border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer">复制 Prompt</button>
-    </div>
-    <pre id="agent-prompt-text" class="bg-black border border-zinc-800/80 p-3 text-xs font-mono text-zinc-300 overflow-x-auto leading-relaxed">请帮我评测模型 [请在此填写模型 ID，如 deepseek/deepseek-v4.1-flash]，并准备提交到 TshuBench（天书榜）：
+    <!-- Contribute via AI Agent -->
+    <section aria-labelledby="contribute-heading" class="mt-6 border border-zinc-800 bg-zinc-950 p-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
+        <h2 id="contribute-heading" class="font-mono text-xs sm:text-sm text-zinc-200 font-bold">// 贡献评测结果：复制以下 Prompt 发给你的 AI 编程助手（Claude Code / Cursor / Antigravity 等）</h2>
+        <button id="copy-agent-prompt" type="button" class="touch-target self-start sm:self-auto px-3 py-1.5 text-xs font-mono border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0">复制 Prompt</button>
+      </div>
+      <pre id="agent-prompt-text" class="bg-black border border-zinc-800/80 p-3 text-xs sm:text-sm font-mono text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">请帮我评测模型 [请在此填写模型 ID，如 deepseek/deepseek-v4.1-flash]，并准备提交到 TshuBench（天书榜）：
 
 1. 运行 `npx skills add DBinK/TshuBench` 安装 `tshu-eval` 技能。
 2. 加载 `tshu-eval` 技能并严格按照其中的规范与步骤执行评测、校验与 PR 准备。</pre>
-  </div>
+    </section>
+  </main>
 
   <!-- Footer -->
   <footer class="mt-8 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-zinc-500">
@@ -665,14 +743,156 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
   }};
 
   const majorProviders = new Set(['Google', 'Anthropic', 'OpenAI']);
+  const collator = new Intl.Collator('zh-CN', {{ numeric: true, sensitivity: 'base' }});
+  const metricKeys = ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed'];
+  const metricShortNames = {{
+    cci: 'CCI 长链',
+    fmt: 'FMT 排版',
+    enu: 'ENU 堆砌',
+    tic: 'TIC 套话',
+    cvd: 'CVD 推延',
+    hed: 'HED 叠甲'
+  }};
+  const metricLabels = {{
+    cci: ['长链推演', '长复合句与改口推演痕迹 (24%)'],
+    fmt: ['排版膨胀', 'Markdown 结构强迫与支线清单 (16%)'],
+    enu: ['报菜名', '顿号斜杠与高密符号压缩 (20%)'],
+    tic: ['套话模板', '套话抽动与公文式结构 (16%)'],
+    cvd: ['决断推延', '首句打太极，结论后置 (12%)'],
+    hed: ['防御叠甲', '逢人便叠甲，常识过度免责 (12%)']
+  }};
 
   const tbody = document.getElementById('leaderboard-body');
+  const mobileBody = document.getElementById('mobile-leaderboard');
   const searchInput = document.getElementById('search-input');
   const tierBtns = document.querySelectorAll('#tier-group .filter-btn');
   const providerBtns = document.querySelectorAll('#provider-group .filter-btn');
   const ths = document.querySelectorAll('#leaderboard-table th[data-sort]');
+  const mobileSortSelect = document.getElementById('mobile-sort-select');
+  const mobileSortDirBtn = document.getElementById('mobile-sort-dir');
+  const announcer = document.getElementById('status-announcer');
 
-  function render() {{
+  function announce(msg) {{
+    if (announcer) announcer.textContent = msg;
+  }}
+
+  function esc(str) {{
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }}
+
+  function buildDrawerContentHtml(item) {{
+    const hasVariants = item.effort_variants && item.effort_variants.length > 0;
+    const activeIdx = hasVariants ? (state.selectedVariant[item.model] ?? 0) : 0;
+    const active = hasVariants ? (item.effort_variants[activeIdx] || item) : item;
+    const activeMetrics = active.metrics || item.metrics;
+    const activeWorst = active.worst || item.worst;
+    const activeEffort = active.effort || item.effort || '默认';
+
+    let cardsHtml = '';
+    for (const [k, [lbl, desc]] of Object.entries(metricLabels)) {{
+      const val = activeMetrics[k] !== undefined ? activeMetrics[k] : 0;
+      cardsHtml += `
+        <div class="bg-zinc-950 border border-zinc-800 p-3 sm:p-3.5">
+          <div class="text-xs font-mono text-zinc-300 font-bold">${{lbl}}</div>
+          <div class="font-mono text-lg sm:text-xl font-bold text-zinc-50 my-1">${{val.toFixed(1)}}</div>
+          <div class="text-xs text-zinc-400 leading-normal font-sans">${{desc}}</div>
+        </div>
+      `;
+    }}
+
+    let variantsHtml = '';
+    if (item.effort_variants && item.effort_variants.length > 1) {{
+      let vCards = '';
+      item.effort_variants.forEach((v, idx) => {{
+        const isBest = idx === 0;
+        const isActive = idx === activeIdx;
+        const badge = isBest ? '<span class="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 ml-2">主榜代表</span>' : '';
+        const borderCls = isActive ? 'border-emerald-400 ring-1 ring-emerald-400/40' : (isBest ? 'border-emerald-500/40 hover:border-zinc-500' : 'border-zinc-800 hover:border-zinc-600');
+        vCards += `
+          <button type="button" data-variant-idx="${{idx}}" aria-pressed="${{isActive}}" class="variant-card touch-target text-left w-full cursor-pointer transition-colors bg-zinc-950 border ${{borderCls}} p-3">
+            <div class="flex items-center justify-between text-xs font-mono text-zinc-300">
+              <span>档位：${{esc(v.effort)}}</span>${{badge}}
+            </div>
+            <div class="font-mono text-base sm:text-lg font-bold text-zinc-50 mt-1">${{v.tshu_score.toFixed(2)}} <span class="text-xs font-normal text-zinc-400">[${{v.ci_lower.toFixed(1)}}, ${{v.ci_upper.toFixed(1)}}]</span></div>
+            <div class="text-xs text-zinc-400 mt-0.5">${{esc(v.tier)}}</div>
+          </button>
+        `;
+      }});
+      variantsHtml = `
+        <div class="mt-4 border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
+          <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 多思考档位对比（点击卡片切换下方诊断与样本）</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">${{vCards}}</div>
+        </div>
+      `;
+    }}
+
+    let badcasesHtml = '';
+    if (activeWorst && activeWorst.length > 0) {{
+      badcasesHtml = `
+        <div class="mt-4 border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
+          <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 典型高扣分样本</div>
+      `;
+      activeWorst.forEach(w => {{
+        const promptHtml = w.prompt ? `<div class="text-zinc-200 font-sans text-xs sm:text-sm mb-2 bg-zinc-950 border border-zinc-800 px-3 py-2"><span class="text-emerald-400 font-mono font-bold mr-1.5">问：</span>${{esc(w.prompt)}}</div>` : '';
+        badcasesHtml += `
+          <div class="border-t border-zinc-800/80 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 text-sm">
+            <div class="text-red-400 font-semibold mb-1.5 font-mono text-xs">用例：[${{esc(w.task_id)}}] · 扣分：${{w.score}}</div>
+            ${{promptHtml}}
+            <div class="text-zinc-300 font-mono text-xs sm:text-sm leading-relaxed bg-zinc-900/60 border border-zinc-800/60 p-3 whitespace-pre-wrap break-words"><span class="text-zinc-400 font-bold mr-1.5">答：</span>${{esc(w.response)}}</div>
+          </div>
+        `;
+      }});
+      badcasesHtml += '</div>';
+    }}
+
+    const parts = item.model.split('/');
+    const prov = parts.length > 1 ? parts[0].toLowerCase() : 'unknown';
+    const slug = (parts.length > 1 ? parts.slice(1).join('-') : parts[0]).replace(/[^a-zA-Z0-9._-]/g, '-');
+    const effSlug = activeEffort === '默认' ? 'default' : activeEffort;
+    const rawUrl = `https://github.com/DBinK/TshuBench/blob/main/runs/${{prov}}/${{slug}}_${{effSlug}}.jsonl`;
+
+    return `
+      <div class="max-w-5xl mx-auto">
+        <div class="flex flex-col sm:flex-row sm:items-baseline justify-between border-b border-zinc-800 pb-3 mb-4 gap-2">
+          <div class="font-bold text-sm sm:text-base text-zinc-100 font-mono tracking-tight flex flex-wrap items-center gap-2">
+            <span>// ${{item.name}} (${{activeEffort}}) · 六维病灶诊断</span>
+            <a href="${{rawUrl}}" target="_blank" rel="noopener" class="text-xs font-normal text-emerald-400 hover:underline">原始样本 ↗</a>
+          </div>
+          <div class="text-xs font-mono text-zinc-400">天书指数：<span class="text-emerald-400 font-bold text-sm">${{active.tshu_score.toFixed(2)}}</span> · 95% 置信区间 [${{active.ci_lower.toFixed(1)}}, ${{active.ci_upper.toFixed(1)}}]</div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3">${{cardsHtml}}</div>
+        ${{variantsHtml}}
+        ${{badcasesHtml}}
+      </div>
+    `;
+  }}
+
+  function bindDrawerInteractions(container, item, focusTargetSelector) {{
+    container.querySelectorAll('.variant-card').forEach(card => {{
+      card.addEventListener('click', (e) => {{
+        e.stopPropagation();
+        const idx = parseInt(card.dataset.variantIdx, 10);
+        state.selectedVariant[item.model] = idx;
+        render({{ focusModel: item.model, focusVariantIdx: idx, scope: focusTargetSelector }});
+      }});
+    }});
+  }}
+
+  function toggleExpand(model, scope) {{
+    if (state.expanded.has(model)) {{
+      state.expanded.delete(model);
+    }} else {{
+      state.expanded.add(model);
+    }}
+    render({{ focusModel: model, scope }});
+  }}
+
+  function render(focusHint) {{
     let filtered = rawData.filter(item => {{
       if (state.tier !== 'all' && item.tier !== state.tier) return false;
       if (state.provider === 'Other') {{
@@ -690,192 +910,159 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
       return true;
     }});
 
-    // Sorting
     filtered.sort((a, b) => {{
-      let valA, valB;
+      let cmp = 0;
       if (state.sortKey === 'rank') {{
-        valA = a.rank; valB = b.rank;
-      }} else if (state.sortKey === 'name') {{
-        valA = a.name; valB = b.name;
-      }} else if (state.sortKey === 'effort') {{
-        valA = a.effort; valB = b.effort;
-      }} else if (state.sortKey === 'tier') {{
-        valA = a.tier; valB = b.tier;
+        cmp = a.rank - b.rank;
       }} else if (state.sortKey === 'tshu_score') {{
-        valA = a.tshu_score; valB = b.tshu_score;
+        cmp = a.tshu_score - b.tshu_score;
+      }} else if (state.sortKey === 'name' || state.sortKey === 'effort' || state.sortKey === 'tier') {{
+        cmp = collator.compare(String(a[state.sortKey] || ''), String(b[state.sortKey] || ''));
       }} else {{
-        valA = a.metrics[state.sortKey] || 0;
-        valB = b.metrics[state.sortKey] || 0;
+        cmp = (a.metrics[state.sortKey] || 0) - (b.metrics[state.sortKey] || 0);
       }}
-
-      if (valA === valB) return 0;
-      return state.sortAsc ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+      return state.sortAsc ? cmp : -cmp;
     }});
 
     tbody.innerHTML = '';
-    filtered.forEach(item => {{
-      const tr = document.createElement('tr');
-      tr.className = 'model-row border-b border-zinc-800 hover:bg-zinc-900/70 transition-colors cursor-pointer';
-      const isExpanded = state.expanded.has(item.model);
+    if (mobileBody) mobileBody.innerHTML = '';
 
-      const routeBadge = item.route_note ? ` <span class="text-xs text-zinc-400 font-mono">(${{item.route_note}})</span>` : '';
-      const medal = item.rank === 1 ? '🥇 ' : (item.rank === 2 ? '🥈 ' : (item.rank === 3 ? '🥉 ' : ''));
-
-      let detailedTds = '';
-      for (const k of ['cci', 'fmt', 'enu', 'tic', 'cvd', 'hed']) {{
-        const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
-        const borderCls = k === 'cci' ? 'border-l border-zinc-800' : '';
-        detailedTds += `<td class="px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-200 ${{borderCls}}">${{val}}</td>`;
+    if (filtered.length === 0) {{
+      tbody.innerHTML = '<tr><td colspan="11" class="py-10 text-center text-sm font-mono text-zinc-400">没有匹配的模型，请调整搜索或筛选条件</td></tr>';
+      if (mobileBody) {{
+        mobileBody.innerHTML = '<div class="py-10 px-4 text-center text-sm font-mono text-zinc-400">没有匹配的模型，请调整搜索或筛选条件</div>';
       }}
+    }} else {{
+      filtered.forEach(item => {{
+        const isExpanded = state.expanded.has(item.model);
+        const routeBadge = item.route_note ? ` <span class="text-xs text-zinc-400 font-mono">(${{item.route_note}})</span>` : '';
+        const medal = item.rank === 1 ? '🥇 ' : (item.rank === 2 ? '🥈 ' : (item.rank === 3 ? '🥉 ' : ''));
 
-      tr.innerHTML = `
-        <td class="px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-400">${{medal}}${{item.rank}}</td>
-        <td class="px-4 py-3.5 overflow-hidden">
-          <div class="flex items-center gap-2">
-            <span class="font-bold text-[15px] text-zinc-100 tracking-tight font-sans truncate">${{item.name}}</span>
-            <span class="text-xs font-mono px-2 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300 shrink-0">${{item.provider}}</span>
-          </div>
-          <div class="text-xs font-mono text-zinc-400 mt-1 truncate"><code>${{item.model}}</code>${{routeBadge}}</div>
-        </td>
-        <td class="px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort">${{item.effort}}</td>
-        <td class="px-3 py-3.5 text-center"><span class="tier-tag ${{item.tier_cls}} text-xs font-mono font-semibold px-2 py-0.5 border">${{item.tier}}</span></td>
-        <td class="px-3 py-3.5 text-center border-l border-zinc-800">
-          <span class="font-mono text-lg font-bold text-zinc-50" title="95% 置信区间: [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]">${{item.tshu_score.toFixed(2)}}</span>
-        </td>
-        ${{detailedTds}}
-      `;
-
-      tr.addEventListener('click', () => {{
-        if (state.expanded.has(item.model)) {{
-          state.expanded.delete(item.model);
-        }} else {{
-          state.expanded.add(item.model);
+        // Desktop table row
+        const tr = document.createElement('tr');
+        tr.className = 'model-row border-b border-zinc-800 hover:bg-zinc-900/70 transition-colors cursor-pointer';
+        let detailedTds = '';
+        for (const k of metricKeys) {{
+          const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
+          const borderCls = k === 'cci' ? 'border-l border-zinc-800' : '';
+          detailedTds += `<td class="px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-200 ${{borderCls}}">${{val}}</td>`;
         }}
-        render();
-      }});
-      tbody.appendChild(tr);
 
-      if (isExpanded) {{
-        const drawerTr = document.createElement('tr');
-        drawerTr.className = 'bg-black border-b border-zinc-800';
-        const hasVariants = item.effort_variants && item.effort_variants.length > 0;
-        const activeIdx = hasVariants ? (state.selectedVariant[item.model] ?? 0) : 0;
-        const active = hasVariants ? (item.effort_variants[activeIdx] || item) : item;
-        const activeMetrics = active.metrics || item.metrics;
-        const activeWorst = active.worst || item.worst;
-
-        let cardsHtml = '';
-        const metricLabels = {{
-          cci: ['长链推演', '长复合句与改口推演痕迹 (24%)'],
-          fmt: ['排版膨胀', 'Markdown 结构强迫与支线清单 (16%)'],
-          enu: ['报菜名', '顿号斜杠与高密符号压缩 (20%)'],
-          tic: ['套话模板', '套话抽动与公文式结构 (16%)'],
-          cvd: ['决断推延', '首句打太极，结论后置 (12%)'],
-          hed: ['防御叠甲', '逢人便叠甲，常识过度免责 (12%)']
-        }};
-        for (const [k, [lbl, desc]] of Object.entries(metricLabels)) {{
-          const val = activeMetrics[k] !== undefined ? activeMetrics[k] : 0;
-          cardsHtml += `
-            <div class="bg-zinc-950 border border-zinc-800 p-3.5">
-              <div class="text-xs font-mono text-zinc-300 font-bold">${{lbl}}</div>
-              <div class="font-mono text-xl font-bold text-zinc-50 my-1">${{val.toFixed(1)}}</div>
-              <div class="text-xs text-zinc-400 leading-normal font-sans">${{desc}}</div>
+        tr.innerHTML = `
+          <td class="px-3 py-3.5 text-center font-mono text-sm font-semibold text-zinc-400">${{medal}}${{item.rank}}</td>
+          <td class="px-4 py-3.5 overflow-hidden">
+            <div class="flex items-center gap-2">
+              <button type="button" data-expand-model="${{item.model}}" aria-expanded="${{isExpanded}}" class="expand-btn touch-target text-left font-bold text-[15px] text-zinc-100 hover:text-emerald-400 tracking-tight font-sans truncate cursor-pointer">
+                ${{item.name}} <span class="text-xs font-mono text-zinc-500 ml-1" aria-hidden="true">${{isExpanded ? '▾' : '▸'}}</span>
+              </button>
+              <span class="text-xs font-mono px-2 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300 shrink-0">${{item.provider}}</span>
             </div>
-          `;
-        }}
-
-        let variantsHtml = '';
-        if (item.effort_variants && item.effort_variants.length > 1) {{
-          let vCards = '';
-          item.effort_variants.forEach((v, idx) => {{
-            const isBest = idx === 0;
-            const isActive = idx === activeIdx;
-            const badge = isBest ? '<span class="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 ml-2">主榜代表</span>' : '';
-            const borderCls = isActive ? 'border-emerald-400 ring-1 ring-emerald-400/40' : (isBest ? 'border-emerald-500/40 hover:border-zinc-500' : 'border-zinc-800 hover:border-zinc-600');
-            vCards += `
-              <div data-variant-idx="${{idx}}" class="variant-card cursor-pointer transition-colors bg-zinc-950 border ${{borderCls}} p-3">
-                <div class="flex items-center justify-between text-xs font-mono text-zinc-300">
-                  <span>档位：${{v.effort}}</span>${{badge}}
-                </div>
-                <div class="font-mono text-lg font-bold text-zinc-50 mt-1">${{v.tshu_score.toFixed(2)}} <span class="text-xs font-normal text-zinc-400">[${{v.ci_lower.toFixed(1)}}, ${{v.ci_upper.toFixed(1)}}]</span></div>
-                <div class="text-xs text-zinc-400 mt-0.5">${{v.tier}}</div>
-              </div>
-            `;
-          }});
-          variantsHtml = `
-            <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
-              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 多思考档位对比（点击卡片切换下方诊断与样本）</div>
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${{vCards}}</div>
-            </div>
-          `;
-        }}
-
-        let badcasesHtml = '';
-        if (activeWorst && activeWorst.length > 0) {{
-          badcasesHtml = `
-            <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
-              <div class="font-mono text-xs text-zinc-300 uppercase tracking-wider mb-2.5 font-bold">// 典型高扣分样本</div>
-          `;
-          activeWorst.forEach(w => {{
-            const promptHtml = w.prompt ? `<div class="text-zinc-200 font-sans text-xs sm:text-sm mb-2 bg-zinc-950 border border-zinc-800 px-3 py-2"><span class="text-emerald-400 font-mono font-bold mr-1.5">问：</span>${{w.prompt}}</div>` : '';
-            badcasesHtml += `
-              <div class="border-t border-zinc-800/80 pt-3 mt-3 first:border-0 first:pt-0 first:mt-0 text-sm">
-                <div class="text-red-400 font-semibold mb-1.5 font-mono text-xs">用例：[${{w.task_id}}] · 扣分：${{w.score}}</div>
-                ${{promptHtml}}
-                <div class="text-zinc-300 font-mono text-xs sm:text-sm leading-relaxed bg-zinc-900/60 border border-zinc-800/60 p-3 whitespace-pre-wrap"><span class="text-zinc-400 font-bold mr-1.5">答：</span>${{w.response}}</div>
-              </div>
-            `;
-          }});
-          badcasesHtml += '</div>';
-        }}
-
-        const activeEffort = active.effort || item.effort || '默认';
-        const parts = item.model.split('/');
-        const prov = parts.length > 1 ? parts[0].toLowerCase() : 'unknown';
-        const slug = (parts.length > 1 ? parts.slice(1).join('-') : parts[0]).replace(/[^a-zA-Z0-9._-]/g, '-');
-        const effSlug = activeEffort === '默认' ? 'default' : activeEffort;
-        const rawUrl = `https://github.com/DBinK/TshuBench/blob/main/runs/${{prov}}/${{slug}}_${{effSlug}}.jsonl`;
-
-        drawerTr.innerHTML = `
-          <td colspan="11" class="p-6 bg-black">
-            <div class="max-w-5xl mx-auto">
-              <div class="flex flex-col sm:flex-row sm:items-baseline justify-between border-b border-zinc-800 pb-3 mb-4">
-                <div class="font-bold text-base text-zinc-100 font-mono tracking-tight">// ${{item.name}} (${{activeEffort}}) · 六维病灶诊断 <a href="${{rawUrl}}" target="_blank" rel="noopener" class="ml-2 text-xs font-normal text-emerald-400 hover:underline">原始样本 ↗</a></div>
-                <div class="text-xs font-mono text-zinc-400 mt-1 sm:mt-0">天书指数：<span class="text-emerald-400 font-bold text-sm">${{active.tshu_score.toFixed(2)}}</span> · 95% 置信区间 [${{active.ci_lower.toFixed(1)}}, ${{active.ci_upper.toFixed(1)}}]</div>
-              </div>
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">${{cardsHtml}}</div>
-              ${{variantsHtml}}
-              ${{badcasesHtml}}
-            </div>
+            <div class="text-xs font-mono text-zinc-400 mt-1 truncate"><code>${{item.model}}</code>${{routeBadge}}</div>
           </td>
+          <td class="px-3 py-3.5 text-center font-mono text-sm text-zinc-300 effort">${{item.effort}}</td>
+          <td class="px-3 py-3.5 text-center"><span class="tier-tag ${{item.tier_cls}} text-xs font-mono font-semibold px-2 py-0.5 border">${{item.tier}}</span></td>
+          <td class="px-3 py-3.5 text-center border-l border-zinc-800">
+            <span class="font-mono text-lg font-bold text-zinc-50" title="95% 置信区间: [${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]">${{item.tshu_score.toFixed(2)}}</span>
+          </td>
+          ${{detailedTds}}
         `;
-        drawerTr.querySelectorAll('.variant-card').forEach(card => {{
-          card.addEventListener('click', (e) => {{
-            e.stopPropagation();
-            state.selectedVariant[item.model] = parseInt(card.dataset.variantIdx, 10);
-            render();
-          }});
+        tr.addEventListener('click', (e) => {{
+          if (e.target.closest('a, button')) return;
+          toggleExpand(item.model, 'desktop');
         }});
-        tbody.appendChild(drawerTr);
-      }}
-    }});
+        tr.querySelector('.expand-btn').addEventListener('click', (e) => {{
+          e.stopPropagation();
+          toggleExpand(item.model, 'desktop');
+        }});
+        tbody.appendChild(tr);
 
-    // Update th active sort indicators
+        if (isExpanded) {{
+          const drawerTr = document.createElement('tr');
+          drawerTr.className = 'bg-black border-b border-zinc-800';
+          drawerTr.innerHTML = `<td colspan="11" class="p-6 bg-black">${{buildDrawerContentHtml(item)}}</td>`;
+          bindDrawerInteractions(drawerTr, item, 'desktop');
+          tbody.appendChild(drawerTr);
+        }}
+
+        // Mobile card
+        if (mobileBody) {{
+          const card = document.createElement('article');
+          card.className = 'p-3.5 bg-zinc-950';
+          const metricGridHtml = metricKeys.map(k => {{
+            const val = item.metrics[k] !== undefined ? item.metrics[k].toFixed(1) : '-';
+            return `<div class="bg-black border border-zinc-800/90 px-2.5 py-1.5 flex items-center justify-between text-xs font-mono"><span class="text-zinc-400">${{metricShortNames[k]}}</span><span class="text-zinc-100 font-semibold">${{val}}</span></div>`;
+          }}).join('');
+
+          card.innerHTML = `
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="font-mono text-xs font-bold text-zinc-400">${{medal}}#${{item.rank}}</span>
+                  <span class="font-bold text-base text-zinc-100 font-sans break-words">${{item.name}}</span>
+                  <span class="text-[11px] font-mono px-1.5 py-0.5 border border-zinc-700 bg-zinc-900 text-zinc-300">${{item.provider}}</span>
+                </div>
+                <div class="text-xs font-mono text-zinc-400 mt-1 break-all"><code>${{item.model}}</code>${{routeBadge}}</div>
+                <div class="flex flex-wrap items-center gap-2 mt-2">
+                  <span class="text-xs font-mono px-2 py-0.5 border border-zinc-800 bg-zinc-900 text-zinc-300">档位：${{item.effort}}</span>
+                  <span class="tier-tag ${{item.tier_cls}} text-xs font-mono font-semibold px-2 py-0.5 border">${{item.tier}}</span>
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-[11px] font-mono text-zinc-400">天书指数</div>
+                <div class="font-mono text-2xl font-bold text-zinc-50 leading-tight">${{item.tshu_score.toFixed(2)}}</div>
+                <div class="text-[11px] font-mono text-zinc-500">[${{item.ci_lower.toFixed(1)}}, ${{item.ci_upper.toFixed(1)}}]</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-3">${{metricGridHtml}}</div>
+            <button type="button" data-expand-model="${{item.model}}" aria-expanded="${{isExpanded}}" class="mobile-expand-btn touch-target mt-3 w-full py-2 px-3 border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-900 text-xs font-mono text-emerald-400 flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
+              <span>${{isExpanded ? '收起六维诊断与样本 ▴' : '展开六维诊断与样本 ▾'}}</span>
+            </button>
+            ${{isExpanded ? `<div class="mobile-drawer mt-3 pt-3 border-t border-zinc-800">${{buildDrawerContentHtml(item)}}</div>` : ''}}
+          `;
+          card.querySelector('.mobile-expand-btn').addEventListener('click', () => {{
+            toggleExpand(item.model, 'mobile');
+          }});
+          if (isExpanded) {{
+            bindDrawerInteractions(card.querySelector('.mobile-drawer'), item, 'mobile');
+          }}
+          mobileBody.appendChild(card);
+        }}
+      }});
+    }}
+
+    // Sync sort headers and mobile sort controls
     ths.forEach(th => {{
       const key = th.getAttribute('data-sort');
       const ind = th.querySelector('.sort-ind');
-      if (!ind) return;
       if (state.sortKey === key) {{
-        ind.textContent = state.sortAsc ? '▲' : '▼';
+        th.setAttribute('aria-sort', state.sortAsc ? 'ascending' : 'descending');
         th.classList.add('sort-active');
+        if (ind) ind.textContent = state.sortAsc ? '▲' : '▼';
       }} else {{
-        ind.textContent = '';
+        th.removeAttribute('aria-sort');
         th.classList.remove('sort-active');
+        if (ind) ind.textContent = '';
       }}
     }});
+    if (mobileSortSelect) mobileSortSelect.value = state.sortKey;
+    if (mobileSortDirBtn) mobileSortDirBtn.textContent = state.sortAsc ? '▲ 升序' : '▼ 降序';
+
+    // Restore focus if an expand button or variant card triggered re-render
+    if (focusHint && focusHint.focusModel) {{
+      const root = focusHint.scope === 'mobile' ? mobileBody : tbody;
+      if (root) {{
+        let target = null;
+        if (focusHint.focusVariantIdx !== undefined) {{
+          target = root.querySelector(`.variant-card[data-variant-idx="${{focusHint.focusVariantIdx}}"]`);
+        }} else {{
+          const escaped = CSS.escape(focusHint.focusModel);
+          target = root.querySelector(`[data-expand-model="${{escaped}}"]`);
+        }}
+        target?.focus({{ preventScroll: true }});
+      }}
+    }}
   }}
 
-  // Event bindings
   searchInput.addEventListener('input', (e) => {{
     state.search = e.target.value.trim();
     render();
@@ -883,8 +1070,12 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
 
   tierBtns.forEach(btn => {{
     btn.addEventListener('click', () => {{
-      tierBtns.forEach(b => b.classList.remove('active'));
+      tierBtns.forEach(b => {{
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', 'false');
+      }});
       btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
       state.tier = btn.getAttribute('data-tier');
       render();
     }});
@@ -892,15 +1083,21 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
 
   providerBtns.forEach(btn => {{
     btn.addEventListener('click', () => {{
-      providerBtns.forEach(b => b.classList.remove('active'));
+      providerBtns.forEach(b => {{
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', 'false');
+      }});
       btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
       state.provider = btn.getAttribute('data-provider');
       render();
     }});
   }});
 
   ths.forEach(th => {{
-    th.addEventListener('click', () => {{
+    const btn = th.querySelector('button.sort-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {{
       const key = th.getAttribute('data-sort');
       if (!key) return;
       if (state.sortKey === key) {{
@@ -910,21 +1107,39 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         state.sortAsc = true;
       }}
       render();
+      announce(`已按 ${{btn.textContent.trim()}} ${{state.sortAsc ? '升序' : '降序'}} 排列`);
     }});
   }});
+
+  if (mobileSortSelect) {{
+    mobileSortSelect.addEventListener('change', (e) => {{
+      state.sortKey = e.target.value;
+      state.sortAsc = true;
+      render();
+    }});
+  }}
+  if (mobileSortDirBtn) {{
+    mobileSortDirBtn.addEventListener('click', () => {{
+      state.sortAsc = !state.sortAsc;
+      render();
+    }});
+  }}
 
   render();
 }})();
 </script>
   <script>
-  document.getElementById('copy-agent-prompt')?.addEventListener('click', function() {{
+  document.getElementById('copy-agent-prompt')?.addEventListener('click', async function() {{
+    const btn = this;
     const text = document.getElementById('agent-prompt-text')?.innerText || '';
-    navigator.clipboard?.writeText(text).then(() => {{
-      const btn = this;
-      const old = btn.textContent;
+    const old = btn.textContent;
+    try {{
+      await navigator.clipboard.writeText(text);
       btn.textContent = '已复制 ✓';
-      setTimeout(() => {{ btn.textContent = old; }}, 1800);
-    }});
+    }} catch (_err) {{
+      btn.textContent = '复制失败，请手动选中';
+    }}
+    setTimeout(() => {{ btn.textContent = old; }}, 1800);
   }});
   </script>
 </body>
