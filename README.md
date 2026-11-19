@@ -34,7 +34,7 @@
 将以下提示词直接复制发送给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等）：
 
 ```markdown
-请帮我评测 [provider/model] 并提交到 TshuBench：
+请帮我评测 [provider/model] 并提交到 TshuBench（https://github.com/DBinK/TshuBench）：
 
 1. 运行 `npx skills add DBinK/TshuBench` 安装 `tshubench-eval` 技能。
 2. 加载 `tshubench-eval` 技能并严格按照其中的规范与步骤执行评测、校验与 PR 准备。
