@@ -1,4 +1,4 @@
-# TshuBench · 天书榜
+# <img src="assets/logo.svg" width="34" height="34" align="absmiddle" alt="TshuBench Logo"> TshuBench · 天书榜
 
 > **量化大模型中文工程回答中的表达负担与结构膨胀**  
 > 基于确定性 AST 语法树与词法规则，无 LLM 裁判（Zero-LLM），100% 可复现。
