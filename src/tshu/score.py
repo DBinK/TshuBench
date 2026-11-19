@@ -616,7 +616,14 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
   <!-- Header / Topbar -->
   <header class="mb-6">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-      <h1 class="flex items-center gap-3 text-2xl sm:text-3xl font-extrabold tracking-tight font-mono">
+      <h1 class="flex items-center gap-2.5 sm:gap-3 text-2xl sm:text-3xl font-extrabold tracking-tight font-mono">
+        <svg aria-hidden="true" class="w-9 h-9 sm:w-10 sm:h-10 shrink-0" viewBox="0 0 32 32">
+          <rect width="32" height="32" fill="#09090b"/>
+          <rect x="1" y="1" width="30" height="30" fill="none" stroke="#ffffff" stroke-width="2"/>
+          <rect x="6" y="7" width="13" height="3.5" fill="#ffffff"/>
+          <rect x="10.75" y="10.5" width="3.5" height="14.5" fill="#ffffff"/>
+          <rect x="19" y="21.5" width="7" height="3.5" fill="#34d399"/>
+        </svg>
         <span class="bg-white text-zinc-950 px-3 font-mono font-black text-xl sm:text-2xl inline-flex items-center justify-center h-9 sm:h-10" style="font-weight: 900;">TshuBench</span>
         <span class="text-white text-2xl sm:text-3xl font-extrabold tracking-tight">天书榜</span>
       </h1>
