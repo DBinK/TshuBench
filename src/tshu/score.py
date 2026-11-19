@@ -422,6 +422,7 @@ def render_html(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>TshuBench · 天书榜 | 中文大模型表达负担与结构膨胀评测</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2309090b'/%3E%3Crect x='1' y='1' width='30' height='30' fill='none' stroke='%23ffffff' stroke-width='2'/%3E%3Crect x='6' y='7' width='13' height='3.5' fill='%23ffffff'/%3E%3Crect x='10.75' y='10.5' width='3.5' height='14.5' fill='%23ffffff'/%3E%3Crect x='19' y='21.5' width='7' height='3.5' fill='%2334d399'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
