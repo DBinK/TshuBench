@@ -52,7 +52,7 @@ uvx --refresh --from git+https://github.com/DBinK/TshuBench tshu score \
 
 ### 方式二：交给您的 AI Agent 自动完成
 
-直接将 [README 快速上手](README.md#方式一ai-agent-自动化评测推荐) 中的提示词复制给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等），它会自动安装 `tshu-eval` 技能并完成 API 密钥确认、评测执行、完整性校验与 PR 准备。
+直接将 [README 快速上手](README.md#方式一ai-agent-自动化评测推荐) 中的提示词复制给您的 AI 编程助手（如 Claude Code、Cursor、Cline、Antigravity 等），它会自动安装 `tshubench-eval` 技能并完成 API 密钥确认、评测执行、完整性校验与 PR 准备。
 
 ## 5. PR 正文规范
 

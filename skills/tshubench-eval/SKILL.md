@@ -1,5 +1,5 @@
 ---
-name: tshu-eval
+name: tshubench-eval
 description: TshuBench（天书榜）大模型评测与社区贡献指南。仅在用户显式要求执行天书榜评测、或通过提示词/斜杠命令调用时使用；不要从一般开发或代码对话上下文自动触发。
 license: MIT
 compatibility: 需要 uv/uvx 与 Python 3.10+
@@ -49,4 +49,5 @@ metadata:
 
 5. **汇报结果与引导提交 PR**
    - 向用户汇报该模型的天书指数、95% 置信区间、所属梯队与六维扣分概况。
-   - 引导用户向 `DBinK/TshuBench` 提交 Pull Request（仅新增 `runs/<provider>/<model_slug>_<effort>.jsonl`），CI 会自动校验并在 PR 评论区回帖战报预览。
+   - 引导用户向 `DBinK/TshuBench` 提交 Pull Request（仅新增 `runs/<provider>/<model_slug>_<effort>.jsonl`），CI 会自动校验并在 PR 评论区回复评测报告预览。
+   - 若协助用户创建 PR，正文须按仓库 `.github/pull_request_template.md` 模板填写模型标识、推理档位、非默认采样参数、API 供应商/渠道（开源或本地部署需注明权重来源与量化精度）及自检清单。

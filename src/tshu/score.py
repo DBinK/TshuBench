@@ -763,10 +763,10 @@ code, pre, kbd, samp, .font-mono, td.effort, .effort, [data-mono], .metric-cell 
         <h2 id="contribute-heading" class="font-mono text-xs sm:text-sm text-zinc-200 font-bold">// 贡献评测结果：复制以下 Prompt 发给你的 AI 编程助手（Claude Code / Cursor / Antigravity 等）</h2>
         <button id="copy-agent-prompt" type="button" class="touch-target self-start sm:self-auto px-3 py-1.5 text-xs font-mono border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0">复制 Prompt</button>
       </div>
-      <pre id="agent-prompt-text" class="bg-black border border-zinc-800/80 p-3 text-xs sm:text-sm font-mono text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">请帮我评测模型 [请在此填写模型 ID，如 deepseek/deepseek-v4.1-flash]，并准备提交到 TshuBench（天书榜）：
+      <pre id="agent-prompt-text" class="bg-black border border-zinc-800/80 p-3 text-xs sm:text-sm font-mono text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">请帮我评测 [provider/model] 并提交到 TshuBench：
 
-1. 运行 `npx skills add DBinK/TshuBench` 安装 `tshu-eval` 技能。
-2. 加载 `tshu-eval` 技能并严格按照其中的规范与步骤执行评测、校验与 PR 准备。</pre>
+1. 运行 `npx skills add DBinK/TshuBench` 安装 `tshubench-eval` 技能。
+2. 加载 `tshubench-eval` 技能并严格按照其中的规范与步骤执行评测、校验与 PR 准备。</pre>
     </section>
   </main>
 
